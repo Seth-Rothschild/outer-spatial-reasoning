@@ -324,7 +324,7 @@ export function initScene() {
     // ---- controls -----------------------------------------------------------------
     const playButton = $("play");
     const speedSelect = $("speed");
-    const dateButton = $("datebtn");
+    const nowToggle = $("now-toggle");
     const dateBar = $("datebar");
     const whenInput = $("when");
     const headerTime = $("r-time");
@@ -382,9 +382,9 @@ export function initScene() {
     speedSelect.addEventListener("change", () => {
       speedSecondsPerSecond = parseFloat(speedSelect.value);
     });
-    dateButton.addEventListener("click", () => {
+    nowToggle.addEventListener("click", () => {
       dateBar.hidden = !dateBar.hidden;
-      dateButton.setAttribute("aria-pressed", String(!dateBar.hidden));
+      nowToggle.setAttribute("aria-expanded", String(!dateBar.hidden));
       whenInput.value = unixMsToDatetimeInput(simulatedMs);
     });
     whenInput.addEventListener("change", () => {

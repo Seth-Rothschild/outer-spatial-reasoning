@@ -43,14 +43,20 @@
   <body>
     <header>
       <h1>Outer Spatial Reasoning</h1>
-      <div class="now">
+      <button
+        type="button"
+        id="now-toggle"
+        class="now"
+        aria-expanded="false"
+        aria-controls="datebar"
+      >
         <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
           <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
           <path id="phase-lit" fill="#ece7d6" />
           <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
         </svg>
         <span id="r-time"></span>
-      </div>
+      </button>
     </header>
 
     <div id="stage">
@@ -73,7 +79,6 @@
         <option value="1" selected>Real time</option>
         <option value="3600">1 hour / sec</option>
       </select>
-      <button id="datebtn" type="button" aria-pressed="false" hidden>Date</button>
     </div>
 
     <div class="datebar" id="datebar" hidden>

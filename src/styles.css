@@ -52,6 +52,14 @@ h2 {
   gap: 8px;
   font: 400 12px/1 var(--mono);
   color: var(--mute);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.now:hover,
+.now:focus-visible {
+  color: var(--ink);
 }
 #phase-icon {
   flex: none;
