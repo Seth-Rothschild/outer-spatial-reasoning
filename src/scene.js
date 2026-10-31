@@ -54,16 +54,29 @@ const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene
 // as the Moon moves along its real orbit, with no mode to switch and so no jump:
 // the anchor was always Earth, and only the default vantage point drifts.
 //
-// Only one Viewpoint is wired up today, but the shape is built so that a future
-// "the Moon, toward Earth" or "Earth, toward the Sun" is another entry here, not a
-// rewrite of the camera code: each just needs its own anchor/frameToward/distance/
-// framing, reading whatever fields it needs off `frame`.
+// The Moon and Sun viewpoints share the same framing: each just needs its own
+// anchor/frameToward/distance, reading whatever fields it needs off `frame`. A
+// future "the Moon, toward Earth" is another entry here, not a rewrite of the
+// camera code.
 const EARTH_TOWARD_MOON = {
   anchor: () => EARTH_ORIGIN,
   frameToward: (frame) => frame.moonDisplayPos,
   distance: 5, // close enough that Earth reads as the foreground subject
   defaultYaw: Math.PI, // sit on the far side of Earth from the Moon, so it reads behind Earth
   defaultPitch: 0.45,
+};
+const EARTH_TOWARD_SUN = {
+  anchor: () => EARTH_ORIGIN,
+  frameToward: (frame) => frame.sunDisplayPos,
+  distance: 8, // farther back than the Moon view: Earth's bulk eclipses the Sun at close range
+  defaultYaw: Math.PI, // sit on the far side of Earth from the Sun, so it reads behind Earth
+  defaultPitch: 0.15, // the Sun sits near the ecliptic plane, so a lower vantage keeps it in view
+};
+
+// Keyed by the view-selector button that activates it; see setActiveViewpoint().
+const VIEWPOINTS = {
+  moon: EARTH_TOWARD_MOON,
+  sun: EARTH_TOWARD_SUN,
 };
 
 export function initScene() {
@@ -266,19 +279,24 @@ export function initScene() {
     let playing = true;
     let speedSecondsPerSecond = 1;
 
-    // Right now this never changes, but updateCamera() is written generically
-    // against it so that switching Viewpoints later -- the planned next step -- is
-    // a matter of reassigning this, not rewriting the camera rig.
-    const activeViewpoint = EARTH_TOWARD_MOON;
+    // Reassigned by setActiveViewpoint() when the user picks Moon or Sun.
+    let activeViewpointKey = "moon";
+    let activeViewpoint = VIEWPOINTS[activeViewpointKey];
 
     // The user's drag/keyboard offset from the active Viewpoint's own default
-    // framing (defaultYaw/defaultPitch). Resetting these to 0 is what "look at the
-    // Viewpoint's default composition again" will mean once Viewpoints can switch.
+    // framing (defaultYaw/defaultPitch). Nonzero once the user has panned or
+    // zoomed away from that default -- see markCustomFraming() -- and reset to 0
+    // by setActiveViewpoint() when they pick Moon or Sun again.
     let cameraYawOffset = 0;
     let cameraPitchOffset = 0;
     let zoomFactor = 1;
     let cameraDistance = activeViewpoint.distance;
     const anchorPosition = new THREE.Vector3(); // smoothed toward the Viewpoint's anchor each frame
+
+    // True once the user has panned or zoomed away from the active Viewpoint's
+    // default framing -- shown in the view selector as "Custom" without actually
+    // switching the anchor/frameToward the camera is built around.
+    let isCustomFraming = false;
 
     let viewportWidth = 1,
       viewportHeight = 1;
@@ -311,6 +329,45 @@ export function initScene() {
     const whenInput = $("when");
     const headerTime = $("r-time");
     const phaseLitPath = $("phase-lit");
+    const viewMoonButton = $("view-moon");
+    const viewSunButton = $("view-sun");
+    const viewCustomButton = $("view-custom");
+
+    // Reflects activeViewpointKey/isCustomFraming onto the view-selector buttons.
+    function updateViewButtons() {
+      viewMoonButton.setAttribute(
+        "aria-pressed",
+        String(!isCustomFraming && activeViewpointKey === "moon"),
+      );
+      viewSunButton.setAttribute(
+        "aria-pressed",
+        String(!isCustomFraming && activeViewpointKey === "sun"),
+      );
+      viewCustomButton.setAttribute("aria-pressed", String(isCustomFraming));
+    }
+
+    // Marks the view selector as "Custom" the first time the user pans or zooms
+    // away from the active Viewpoint's default framing; cheap to call repeatedly
+    // since it only touches the DOM on the first call after a reset.
+    function markCustomFraming() {
+      if (isCustomFraming) return;
+      isCustomFraming = true;
+      updateViewButtons();
+    }
+
+    function setActiveViewpoint(key) {
+      activeViewpointKey = key;
+      activeViewpoint = VIEWPOINTS[key];
+      cameraYawOffset = 0;
+      cameraPitchOffset = 0;
+      zoomFactor = 1;
+      cameraDistance = activeViewpoint.distance;
+      isCustomFraming = false;
+      updateViewButtons();
+    }
+    viewMoonButton.addEventListener("click", () => setActiveViewpoint("moon"));
+    viewSunButton.addEventListener("click", () => setActiveViewpoint("sun"));
+    updateViewButtons();
 
     playButton.textContent = playing ? "Pause" : "Play";
     playButton.addEventListener("click", () => {
@@ -352,6 +409,7 @@ export function initScene() {
 
     function zoomBy(factor) {
       zoomFactor = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor * factor));
+      markCustomFraming();
     }
 
     const activePointers = new Map();
@@ -370,6 +428,7 @@ export function initScene() {
       pointer.y = e.clientY;
 
       if (activePointers.size === 1) {
+        if (dx || dy) markCustomFraming();
         cameraYawOffset -= dx * 0.006;
         cameraPitchOffset = Math.max(-1.45, Math.min(1.45, cameraPitchOffset + dy * 0.006));
       } else if (activePointers.size === 2) {
@@ -393,8 +452,10 @@ export function initScene() {
       },
       { passive: false },
     );
+    const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
     canvas.addEventListener("keydown", (e) => {
       let handled = true;
+      if (ARROW_KEYS.has(e.key)) markCustomFraming();
       if (e.key === "ArrowLeft") cameraYawOffset += 0.08;
       else if (e.key === "ArrowRight") cameraYawOffset -= 0.08;
       else if (e.key === "ArrowUp") cameraPitchOffset = Math.min(1.45, cameraPitchOffset + 0.08);
@@ -538,17 +599,18 @@ export function initScene() {
     }
 
     // Orbits the active Viewpoint's anchor, always facing it -- for "Earth, toward
-    // the Moon," that's always facing Earth while orbiting close to it, so Earth
-    // (the subject) is what's actually centered, the way examining a globe never
-    // stops you from facing the globe. The Moon only comes in by steering the
-    // default vantage point: `frameToward` gives its direction from the anchor, and
-    // that sets the camera's baseline yaw/pitch so the Moon reads behind Earth,
-    // without ever being what the camera is aimed at. That direction is read from
-    // `frame` fresh every frame, so the default vantage point drifts with the
-    // Moon's real orbit on its own, continuously -- dragging just adds your own
-    // yaw/pitch/zoom on top of that moving baseline, so nothing ever jumps.
-    // `frame` carries whatever positions the active Viewpoint's anchor/frameToward
-    // functions need; today that's just moonDisplayPos.
+    // the Moon" or "Earth, toward the Sun," that's always facing Earth while
+    // orbiting close to it, so Earth (the subject) is what's actually centered,
+    // the way examining a globe never stops you from facing the globe. The other
+    // body only comes in by steering the default vantage point: `frameToward`
+    // gives its direction from the anchor, and that sets the camera's baseline
+    // yaw/pitch so that body reads behind Earth, without ever being what the
+    // camera is aimed at. That direction is read from `frame` fresh every frame,
+    // so the default vantage point drifts with that body's real position on its
+    // own, continuously -- dragging just adds your own yaw/pitch/zoom on top of
+    // that moving baseline, so nothing ever jumps. `frame` carries whatever
+    // positions any Viewpoint's anchor/frameToward functions need: today that's
+    // moonDisplayPos and sunDisplayPos.
     function updateCamera(dt, frame) {
       const anchor = activeViewpoint.anchor(frame);
       const lookAtPosition = anchor;
@@ -624,7 +686,7 @@ export function initScene() {
       sunLight.position.copy(moonDisplayPos).addScaledVector(sunDirection, 300);
       sunLight.target.position.copy(moonDisplayPos);
 
-      updateCamera(dt, { moonDisplayPos });
+      updateCamera(dt, { moonDisplayPos, sunDisplayPos });
 
       renderer.render(scene, camera);
 
