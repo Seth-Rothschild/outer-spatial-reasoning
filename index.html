@@ -56,15 +56,12 @@
     </div>
 
     <div class="controls">
-      <button id="play" type="button">Play</button>
+      <button id="play" type="button">Pause</button>
       <select id="speed" aria-label="Playback speed">
+        <option value="1" selected>Real time</option>
         <option value="3600">1 hour / sec</option>
-        <option value="21600">6 hours / sec</option>
-        <option value="86400" selected>1 day / sec</option>
-        <option value="259200">3 days / sec</option>
-        <option value="864000">10 days / sec</option>
       </select>
-      <button id="datebtn" type="button" aria-pressed="false">Date</button>
+      <button id="datebtn" type="button" aria-pressed="false" hidden>Date</button>
     </div>
 
     <div class="datebar" id="datebar" hidden>

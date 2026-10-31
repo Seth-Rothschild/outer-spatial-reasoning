@@ -235,8 +235,8 @@ export function initScene() {
   function runSimulation() {
     // ---- simulated time and camera state ------------------------------------------
     let simulatedMs = Date.now();
-    let playing = false;
-    let speedSecondsPerSecond = 86400;
+    let playing = true;
+    let speedSecondsPerSecond = 1;
 
     let cameraYaw = -1.0;
     let cameraPitch = 0.55;
@@ -274,10 +274,16 @@ export function initScene() {
     const dateBar = $("datebar");
     const whenInput = $("when");
 
+    playButton.textContent = playing ? "Pause" : "Play";
     playButton.addEventListener("click", () => {
       playing = !playing;
       playButton.textContent = playing ? "Pause" : "Play";
     });
+    // Browsers restore a <select>'s previously-chosen option across reloads,
+    // overriding the HTML's `selected` attribute -- force it back in sync with our
+    // actual default so a stale dropdown choice from an earlier visit can't silently
+    // disagree with the speed we're actually running at.
+    speedSelect.value = String(speedSecondsPerSecond);
     speedSelect.addEventListener("change", () => {
       speedSecondsPerSecond = parseFloat(speedSelect.value);
     });
