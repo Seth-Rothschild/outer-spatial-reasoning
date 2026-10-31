@@ -1,7 +1,7 @@
 // Pure display logic: turning a Unix timestamp into the wall-clock fields the date
-// picker works in (and back), a human-readable date/time string, and the SVG path for
-// the Moon's current lit phase. Nothing here touches Three.js or holds state across
-// frames.
+// picker works in (and back), a human-readable date/time string, the SVG path for
+// the Moon's current lit phase, and the phase's name. Nothing here touches Three.js
+// or holds state across frames.
 
 // ---- Boston local time --------------------------------------------------------------
 // The date picker works in Boston time, so we convert between a Unix timestamp and
@@ -85,4 +85,22 @@ export function litDiscPath(cx, cy, r, elongationDeg) {
     `A${r} ${r} 0 0 ${edgeSweep} ${cx} ${cy + r}` +
     `A${terminatorRadius.toFixed(2)} ${r} 0 0 ${terminatorSweep} ${cx} ${cy - r}Z`
   );
+}
+
+const PHASE_NAMES = [
+  "New Moon",
+  "Waxing Crescent",
+  "First Quarter",
+  "Waxing Gibbous",
+  "Full Moon",
+  "Waning Gibbous",
+  "Last Quarter",
+  "Waning Crescent",
+];
+
+// The standard 8-way phase name for a Moon-Sun elongation, each name covering a 45°
+// slice centered on its exact phase (so "New Moon" is elongation 337.5-22.5, etc.).
+export function moonPhaseName(elongationDeg) {
+  const index = Math.floor(((elongationDeg + 22.5) % 360) / 45) % 8;
+  return PHASE_NAMES[index];
 }

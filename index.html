@@ -63,15 +63,24 @@
       <canvas
         id="gl"
         tabindex="0"
-        aria-label="3D view of the Sun, Earth and Moon from Earth. Drag to rotate, scroll or pinch to zoom, arrow keys also rotate. The Moon/Sun buttons switch which body the default view faces."
+        aria-label="3D view of the Sun, Earth and Moon. Drag to rotate, scroll or pinch to zoom, arrow keys also rotate. The Moon/Sun/Phases buttons switch between viewing from Earth and a close-up of the Moon."
       ></canvas>
       <div id="loading">Building Earth…</div>
+      <div class="phase-info" id="phase-info" hidden>
+        <p class="phase-name" id="phase-name"></p>
+        <p class="phase-percent" id="phase-percent"></p>
+        <p class="phase-note">
+          The Moon doesn't change shape -- its near side always faces Earth. A phase is just how
+          much of that near side the Sun happens to be lighting from this angle as the Moon orbits.
+        </p>
+      </div>
     </div>
 
     <div class="controls">
       <div class="viewgroup" role="group" aria-label="Camera view">
         <button id="view-moon" type="button" aria-pressed="true">Moon</button>
         <button id="view-sun" type="button" aria-pressed="false">Sun</button>
+        <button id="view-phases" type="button" aria-pressed="false">Phases</button>
         <button id="view-custom" type="button" aria-pressed="false" disabled>Custom</button>
       </div>
       <button id="play" type="button">Pause</button>

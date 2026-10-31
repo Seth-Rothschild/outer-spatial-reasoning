@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { bostonTimeToUnixMs, unixMsToDatetimeInput, litDiscPath } from "../src/ui.js";
+import {
+  bostonTimeToUnixMs,
+  unixMsToDatetimeInput,
+  litDiscPath,
+  moonPhaseName,
+} from "../src/ui.js";
 
 describe("Boston local time conversions", () => {
   it("accounts for EST (UTC-5) in winter", () => {
@@ -49,5 +54,26 @@ describe("litDiscPath", () => {
     // not already hit by the new/first-quarter/full/last-quarter cases above.
     const path = litDiscPath(0, 0, 10, 320);
     expect(path).toMatch(/^M0 -10A10 10 0 0 0 0 10A[\d.]+ 10 0 0 1 0 -10Z$/);
+  });
+});
+
+describe("moonPhaseName", () => {
+  it("names the four primary phases at their exact elongation", () => {
+    expect(moonPhaseName(0)).toBe("New Moon");
+    expect(moonPhaseName(90)).toBe("First Quarter");
+    expect(moonPhaseName(180)).toBe("Full Moon");
+    expect(moonPhaseName(270)).toBe("Last Quarter");
+  });
+
+  it("names the in-between phases", () => {
+    expect(moonPhaseName(45)).toBe("Waxing Crescent");
+    expect(moonPhaseName(135)).toBe("Waxing Gibbous");
+    expect(moonPhaseName(225)).toBe("Waning Gibbous");
+    expect(moonPhaseName(315)).toBe("Waning Crescent");
+  });
+
+  it("wraps New Moon's range across the 360/0 boundary", () => {
+    expect(moonPhaseName(359)).toBe("New Moon");
+    expect(moonPhaseName(1)).toBe("New Moon");
   });
 });

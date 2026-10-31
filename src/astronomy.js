@@ -87,6 +87,13 @@ export function moonSunElongation(jd) {
   return normalizeDegrees(moonPosition(jd).longitude - sunPosition(jd).longitude);
 }
 
+// Fraction (0-1) of the Moon's Earth-facing disc that's sunlit, given the Moon-Sun
+// elongation: 0 at new moon, 1 at full moon. Takes the elongation rather than jd so
+// callers that already have it (e.g. alongside litDiscPath) don't recompute it.
+export function moonIlluminatedFraction(elongationDeg) {
+  return (1 - Math.cos(elongationDeg * (Math.PI / 180))) / 2;
+}
+
 // ---- Coordinate frames ------------------------------------------------------------
 // Scene axes: x points toward the vernal equinox, y toward the north ecliptic pole,
 // z = -y-of-ecliptic (so x/y/z form the right-handed frame Three.js expects).

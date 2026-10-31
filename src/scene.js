@@ -14,9 +14,16 @@ import {
   earthFixedToScene,
   julianDateFromUnixMs,
   moonSunElongation,
+  moonIlluminatedFraction,
 } from "./astronomy.js";
 import { earthTexture, cloudTexture, moonTexture, sunGlowTexture } from "./textures.js";
-import { bostonTimeToUnixMs, unixMsToDatetimeInput, formatFullDate, litDiscPath } from "./ui.js";
+import {
+  bostonTimeToUnixMs,
+  unixMsToDatetimeInput,
+  formatFullDate,
+  litDiscPath,
+  moonPhaseName,
+} from "./ui.js";
 
 const BOSTON_LATITUDE = 42.3601;
 const BOSTON_LONGITUDE = -71.0589;
@@ -59,14 +66,14 @@ const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene
 // as the Moon moves along its real orbit, with no mode to switch and so no jump:
 // the anchor was always Earth, and only the default vantage point drifts.
 //
-// The Moon and Sun viewpoints share the same framing: each just needs its own
-// anchor/frameToward/distance, reading whatever fields it needs off `frame`. A
-// future "the Moon, toward Earth" is another entry here, not a rewrite of the
-// camera code.
+// Each Viewpoint just needs its own anchor/frameToward/distance/framing, reading
+// whatever fields it needs off `frame`; the camera code itself never special-cases
+// any of them.
 const EARTH_TOWARD_MOON = {
   anchor: () => EARTH_ORIGIN,
   frameToward: (frame) => frame.moonDisplayPos,
   distance: 5, // close enough that Earth reads as the foreground subject
+  minDistance: 1.6, // stay just outside Earth's radius (1) even at max zoom
   defaultYaw: Math.PI, // sit on the far side of Earth from the Moon, so it reads behind Earth
   defaultPitch: 0.45,
 };
@@ -74,14 +81,28 @@ const EARTH_TOWARD_SUN = {
   anchor: () => EARTH_ORIGIN,
   frameToward: (frame) => frame.sunDisplayPos,
   distance: 8, // farther back than the Moon view: Earth's bulk eclipses the Sun at close range
+  minDistance: 1.6,
   defaultYaw: Math.PI, // sit on the far side of Earth from the Sun, so it reads behind Earth
   defaultPitch: 0.15, // the Sun sits near the ecliptic plane, so a lower vantage keeps it in view
+};
+// Anchored on the Moon itself rather than Earth, and sitting on its near side (the
+// Earth-facing side, since frameToward is Earth's own position and defaultYaw is 0,
+// not Math.PI) -- the same side every Moon phase is actually observed from, just
+// much closer than the view from Earth allows.
+const MOON_NEAR_SIDE = {
+  anchor: (frame) => frame.moonDisplayPos,
+  frameToward: () => EARTH_ORIGIN,
+  distance: 1.2, // close enough to read surface texture and the terminator clearly
+  minDistance: 0.35, // stay just outside the Moon's radius (0.2727) even at max zoom
+  defaultYaw: 0,
+  defaultPitch: 0.12,
 };
 
 // Keyed by the view-selector button that activates it; see setActiveViewpoint().
 const VIEWPOINTS = {
   moon: EARTH_TOWARD_MOON,
   sun: EARTH_TOWARD_SUN,
+  phases: MOON_NEAR_SIDE,
 };
 
 export function initScene() {
@@ -341,20 +362,18 @@ export function initScene() {
     const whenInput = $("when");
     const headerTime = $("r-time");
     const phaseLitPath = $("phase-lit");
-    const viewMoonButton = $("view-moon");
-    const viewSunButton = $("view-sun");
+    const phaseInfo = $("phase-info");
+    const phaseNameEl = $("phase-name");
+    const phasePercentEl = $("phase-percent");
     const viewCustomButton = $("view-custom");
+    // Keyed the same as VIEWPOINTS, so each preset button drives the matching entry.
+    const presetViewButtons = Object.keys(VIEWPOINTS).map((key) => [key, $(`view-${key}`)]);
 
     // Reflects activeViewpointKey/isCustomFraming onto the view-selector buttons.
     function updateViewButtons() {
-      viewMoonButton.setAttribute(
-        "aria-pressed",
-        String(!isCustomFraming && activeViewpointKey === "moon"),
-      );
-      viewSunButton.setAttribute(
-        "aria-pressed",
-        String(!isCustomFraming && activeViewpointKey === "sun"),
-      );
+      for (const [key, button] of presetViewButtons) {
+        button.setAttribute("aria-pressed", String(!isCustomFraming && activeViewpointKey === key));
+      }
       viewCustomButton.setAttribute("aria-pressed", String(isCustomFraming));
     }
 
@@ -375,10 +394,16 @@ export function initScene() {
       zoomFactor = 1;
       cameraDistance = activeViewpoint.distance;
       isCustomFraming = false;
+      // Toggled here rather than waiting for the periodic update tick, so switching
+      // away from the Phases view hides the panel immediately instead of up to 400ms
+      // late; its text content still only refreshes on that tick, which is fine since
+      // it's already showing the right phase by the time it reappears.
+      phaseInfo.hidden = key !== "phases";
       updateViewButtons();
     }
-    viewMoonButton.addEventListener("click", () => setActiveViewpoint("moon"));
-    viewSunButton.addEventListener("click", () => setActiveViewpoint("sun"));
+    for (const [key, button] of presetViewButtons) {
+      button.addEventListener("click", () => setActiveViewpoint(key));
+    }
     updateViewButtons();
 
     playButton.textContent = playing ? "Pause" : "Play";
@@ -628,7 +653,10 @@ export function initScene() {
       const frameTowardPosition = activeViewpoint.frameToward(frame);
       const directionToFrameTarget = frameTowardPosition.clone().sub(anchor).normalize();
 
-      const goalDistance = Math.max(1.6, activeViewpoint.distance * zoomFactor);
+      const goalDistance = Math.max(
+        activeViewpoint.minDistance,
+        activeViewpoint.distance * zoomFactor,
+      );
       const cameraStep = 1 - Math.exp(-dt * 5);
       cameraDistance = Math.exp(
         Math.log(cameraDistance) + (Math.log(goalDistance) - Math.log(cameraDistance)) * cameraStep,
@@ -713,10 +741,16 @@ export function initScene() {
 
       if (now - lastPeriodicUpdateMs > 400) {
         lastPeriodicUpdateMs = now;
+        const elongation = moonSunElongation(astro.jd);
         headerTime.textContent = formatFullDate.format(simulatedMs);
-        phaseLitPath.setAttribute("d", litDiscPath(50, 50, 46, moonSunElongation(astro.jd)));
+        phaseLitPath.setAttribute("d", litDiscPath(50, 50, 46, elongation));
         if (!dateBar.hidden && document.activeElement !== whenInput) {
           whenInput.value = unixMsToDatetimeInput(simulatedMs);
+        }
+        if (activeViewpointKey === "phases") {
+          phaseNameEl.textContent = moonPhaseName(elongation);
+          const litPercent = Math.round(moonIlluminatedFraction(elongation) * 100);
+          phasePercentEl.textContent = `${litPercent}% lit`;
         }
       }
 

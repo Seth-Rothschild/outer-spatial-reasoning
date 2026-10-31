@@ -7,6 +7,7 @@ import {
   greenwichSiderealTime,
   obliquityOfEcliptic,
   moonSunElongation,
+  moonIlluminatedFraction,
   eclipticToScene,
   earthFixedToScene,
   keplerianPosition,
@@ -79,6 +80,15 @@ describe("moonSunElongation", () => {
     const elongation = moonSunElongation(jd);
     expect(elongation).toBeGreaterThanOrEqual(0);
     expect(elongation).toBeLessThan(360);
+  });
+});
+
+describe("moonIlluminatedFraction", () => {
+  it("is 0 at new moon, 1 at full moon, and 0.5 at the quarters", () => {
+    expect(moonIlluminatedFraction(0)).toBeCloseTo(0, 9);
+    expect(moonIlluminatedFraction(180)).toBeCloseTo(1, 9);
+    expect(moonIlluminatedFraction(90)).toBeCloseTo(0.5, 9);
+    expect(moonIlluminatedFraction(270)).toBeCloseTo(0.5, 9);
   });
 });
 
