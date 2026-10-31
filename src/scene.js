@@ -39,6 +39,33 @@ function vecFromArray([x, y, z]) {
   return new THREE.Vector3(x, y, z);
 }
 
+const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene origin
+
+// A Viewpoint is a place you examine from: `anchor` is the subject you orbit, and
+// the camera always faces it -- dragging swings your position around the anchor,
+// pinch/scroll zooms toward or away from it, but the anchor itself is always what
+// you're looking at, the same way turning a globe in your hands never stops you
+// from facing it.
+//
+// `frameToward` is not a gaze target -- it's a second body whose direction from
+// the anchor sets the camera's default position around the anchor (its baseline
+// yaw/pitch, before your own drag offset is added), recomputed fresh from the real
+// position every frame. That's how "Earth, with the Moon in view" stays composed
+// as the Moon moves along its real orbit, with no mode to switch and so no jump:
+// the anchor was always Earth, and only the default vantage point drifts.
+//
+// Only one Viewpoint is wired up today, but the shape is built so that a future
+// "the Moon, toward Earth" or "Earth, toward the Sun" is another entry here, not a
+// rewrite of the camera code: each just needs its own anchor/frameToward/distance/
+// framing, reading whatever fields it needs off `frame`.
+const EARTH_TOWARD_MOON = {
+  anchor: () => EARTH_ORIGIN,
+  frameToward: (frame) => frame.moonDisplayPos,
+  distance: 5, // close enough that Earth reads as the foreground subject
+  defaultYaw: Math.PI, // sit on the far side of Earth from the Moon, so it reads behind Earth
+  defaultPitch: 0.45,
+};
+
 export function initScene() {
   const canvas = $("gl");
   const stage = $("stage");
@@ -239,11 +266,19 @@ export function initScene() {
     let playing = true;
     let speedSecondsPerSecond = 1;
 
-    let cameraYaw = -1.0;
-    let cameraPitch = 0.55;
+    // Right now this never changes, but updateCamera() is written generically
+    // against it so that switching Viewpoints later -- the planned next step -- is
+    // a matter of reassigning this, not rewriting the camera rig.
+    const activeViewpoint = EARTH_TOWARD_MOON;
+
+    // The user's drag/keyboard offset from the active Viewpoint's own default
+    // framing (defaultYaw/defaultPitch). Resetting these to 0 is what "look at the
+    // Viewpoint's default composition again" will mean once Viewpoints can switch.
+    let cameraYawOffset = 0;
+    let cameraPitchOffset = 0;
     let zoomFactor = 1;
-    let cameraDistance = 24;
-    const cameraTarget = new THREE.Vector3();
+    let cameraDistance = activeViewpoint.distance;
+    const anchorPosition = new THREE.Vector3(); // smoothed toward the Viewpoint's anchor each frame
 
     let viewportWidth = 1,
       viewportHeight = 1;
@@ -335,8 +370,8 @@ export function initScene() {
       pointer.y = e.clientY;
 
       if (activePointers.size === 1) {
-        cameraYaw -= dx * 0.006;
-        cameraPitch = Math.max(-1.45, Math.min(1.45, cameraPitch + dy * 0.006));
+        cameraYawOffset -= dx * 0.006;
+        cameraPitchOffset = Math.max(-1.45, Math.min(1.45, cameraPitchOffset + dy * 0.006));
       } else if (activePointers.size === 2) {
         const [a, b] = Array.from(activePointers.values());
         const distance = Math.hypot(a.x - b.x, a.y - b.y);
@@ -360,10 +395,10 @@ export function initScene() {
     );
     canvas.addEventListener("keydown", (e) => {
       let handled = true;
-      if (e.key === "ArrowLeft") cameraYaw += 0.08;
-      else if (e.key === "ArrowRight") cameraYaw -= 0.08;
-      else if (e.key === "ArrowUp") cameraPitch = Math.min(1.45, cameraPitch + 0.08);
-      else if (e.key === "ArrowDown") cameraPitch = Math.max(-1.45, cameraPitch - 0.08);
+      if (e.key === "ArrowLeft") cameraYawOffset += 0.08;
+      else if (e.key === "ArrowRight") cameraYawOffset -= 0.08;
+      else if (e.key === "ArrowUp") cameraPitchOffset = Math.min(1.45, cameraPitchOffset + 0.08);
+      else if (e.key === "ArrowDown") cameraPitchOffset = Math.max(-1.45, cameraPitchOffset - 0.08);
       else if (e.key === "+" || e.key === "=") zoomBy(0.88);
       else if (e.key === "-") zoomBy(1.14);
       else handled = false;
@@ -502,30 +537,42 @@ export function initScene() {
       sunPointerArrow.style.transform = `rotate(${((Math.atan2(-unitY, unitX) * 180) / Math.PI).toFixed(1)}deg)`;
     }
 
-    // Camera orbits around a target point; yaw is measured from the Sun's direction
-    // so the lighting stays composed the same way as time runs forward.
-    function updateCamera(dt, sunDirection, moonDisplayDistance) {
-      const aspect = viewportWidth / viewportHeight;
-      const horizontalFovTan = fovTan * Math.min(1, aspect);
-      const goalTarget = tmpCameraSpace.set(0, 0, 0);
-      const goalDistance = Math.max(
-        1.6,
-        ((moonDisplayDistance * 1.2 + 0.5) / horizontalFovTan) * zoomFactor,
-      );
+    // Orbits the active Viewpoint's anchor, always facing it -- for "Earth, toward
+    // the Moon," that's always facing Earth while orbiting close to it, so Earth
+    // (the subject) is what's actually centered, the way examining a globe never
+    // stops you from facing the globe. The Moon only comes in by steering the
+    // default vantage point: `frameToward` gives its direction from the anchor, and
+    // that sets the camera's baseline yaw/pitch so the Moon reads behind Earth,
+    // without ever being what the camera is aimed at. That direction is read from
+    // `frame` fresh every frame, so the default vantage point drifts with the
+    // Moon's real orbit on its own, continuously -- dragging just adds your own
+    // yaw/pitch/zoom on top of that moving baseline, so nothing ever jumps.
+    // `frame` carries whatever positions the active Viewpoint's anchor/frameToward
+    // functions need; today that's just moonDisplayPos.
+    function updateCamera(dt, frame) {
+      const anchor = activeViewpoint.anchor(frame);
+      const lookAtPosition = anchor;
+      const frameTowardPosition = activeViewpoint.frameToward(frame);
+      const directionToFrameTarget = frameTowardPosition.clone().sub(anchor).normalize();
 
+      const goalDistance = Math.max(1.6, activeViewpoint.distance * zoomFactor);
       const cameraStep = 1 - Math.exp(-dt * 5);
       cameraDistance = Math.exp(
         Math.log(cameraDistance) + (Math.log(goalDistance) - Math.log(cameraDistance)) * cameraStep,
       );
-      cameraTarget.lerp(goalTarget, cameraStep);
+      anchorPosition.lerp(anchor, cameraStep);
 
-      const yaw = Math.atan2(sunDirection.x, sunDirection.z) + cameraYaw;
+      const yaw =
+        Math.atan2(directionToFrameTarget.x, directionToFrameTarget.z) +
+        activeViewpoint.defaultYaw +
+        cameraYawOffset;
+      const pitch = activeViewpoint.defaultPitch + cameraPitchOffset;
       camera.position.set(
-        cameraTarget.x + cameraDistance * Math.cos(cameraPitch) * Math.sin(yaw),
-        cameraTarget.y + cameraDistance * Math.sin(cameraPitch),
-        cameraTarget.z + cameraDistance * Math.cos(cameraPitch) * Math.cos(yaw),
+        anchorPosition.x + cameraDistance * Math.cos(pitch) * Math.sin(yaw),
+        anchorPosition.y + cameraDistance * Math.sin(pitch),
+        anchorPosition.z + cameraDistance * Math.cos(pitch) * Math.cos(yaw),
       );
-      camera.lookAt(cameraTarget);
+      camera.lookAt(lookAtPosition);
       camera.near = Math.max(0.01, cameraDistance * 0.002);
       camera.far = Math.max(cameraDistance * 220, 2500);
       camera.updateProjectionMatrix();
@@ -577,7 +624,7 @@ export function initScene() {
       sunLight.position.copy(moonDisplayPos).addScaledVector(sunDirection, 300);
       sunLight.target.position.copy(moonDisplayPos);
 
-      updateCamera(dt, sunDirection, moonDisplayDistance);
+      updateCamera(dt, { moonDisplayPos });
 
       renderer.render(scene, camera);
 
