@@ -32,11 +32,16 @@ const SUN_RADIUS_ILLUSTRATIVE = 6;
 const CAMERA_FOV_DEG = 40;
 const MAX_ZOOM_FACTOR = 3;
 const MIN_ZOOM_FACTOR = 1e-5;
+const TIME_JUMP_DURATION_MS = 650; // how long a day-jump/Now/date-picker tween takes to settle
 
 const $ = (id) => document.getElementById(id);
 
 function vecFromArray([x, y, z]) {
   return new THREE.Vector3(x, y, z);
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene origin
@@ -279,6 +284,13 @@ export function initScene() {
     let playing = true;
     let speedSecondsPerSecond = 1;
 
+    // Set by animateTimeTo() (the day-jump buttons, Now, and the date picker) to ease
+    // simulatedMs to a new value over TIME_JUMP_DURATION_MS instead of snapping to it,
+    // so the planets and Earth's rotation visibly sweep to their new positions. null
+    // when no jump is in progress, in which case simulatedMs instead advances by
+    // speedSecondsPerSecond every frame as usual.
+    let timeTween = null; // { fromMs, toMs, startedAtMs }
+
     // Reassigned by setActiveViewpoint() when the user picks Moon or Sun.
     let activeViewpointKey = "moon";
     let activeViewpoint = VIEWPOINTS[activeViewpointKey];
@@ -387,25 +399,24 @@ export function initScene() {
       nowToggle.setAttribute("aria-expanded", String(!dateBar.hidden));
       whenInput.value = unixMsToDatetimeInput(simulatedMs);
     });
+    // Eases simulatedMs to targetMs over TIME_JUMP_DURATION_MS instead of snapping to
+    // it; see renderFrame(), which advances the tween each frame. Restarting from
+    // whatever simulatedMs has eased to so far (rather than from the previous target)
+    // keeps repeated clicks -- e.g. mashing +1 day -- smooth instead of jumpy.
+    function animateTimeTo(targetMs) {
+      timeTween = { fromMs: simulatedMs, toMs: targetMs, startedAtMs: performance.now() };
+    }
+
     whenInput.addEventListener("change", () => {
       const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(whenInput.value);
       if (match) {
         const [, year, month, day, hour, minute] = match;
-        simulatedMs = bostonTimeToUnixMs(+year, +month, +day, +hour, +minute);
+        animateTimeTo(bostonTimeToUnixMs(+year, +month, +day, +hour, +minute));
       }
     });
-    $("d-minus").addEventListener("click", () => {
-      simulatedMs -= 86400000;
-      whenInput.value = unixMsToDatetimeInput(simulatedMs);
-    });
-    $("d-plus").addEventListener("click", () => {
-      simulatedMs += 86400000;
-      whenInput.value = unixMsToDatetimeInput(simulatedMs);
-    });
-    $("d-now").addEventListener("click", () => {
-      simulatedMs = Date.now();
-      whenInput.value = unixMsToDatetimeInput(simulatedMs);
-    });
+    $("d-minus").addEventListener("click", () => animateTimeTo(simulatedMs - 86400000));
+    $("d-plus").addEventListener("click", () => animateTimeTo(simulatedMs + 86400000));
+    $("d-now").addEventListener("click", () => animateTimeTo(Date.now()));
 
     function zoomBy(factor) {
       zoomFactor = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor * factor));
@@ -651,7 +662,14 @@ export function initScene() {
     function renderFrame(now) {
       const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
       lastFrameTime = now;
-      if (playing) simulatedMs += speedSecondsPerSecond * 1000 * dt;
+      if (timeTween) {
+        const progress = Math.min(1, (now - timeTween.startedAtMs) / TIME_JUMP_DURATION_MS);
+        simulatedMs =
+          timeTween.fromMs + (timeTween.toMs - timeTween.fromMs) * easeInOutCubic(progress);
+        if (progress >= 1) timeTween = null;
+      } else if (playing) {
+        simulatedMs += speedSecondsPerSecond * 1000 * dt;
+      }
       computeAstronomy();
 
       const sunDirection = astro.sunScenePos.clone().normalize();
