@@ -53,80 +53,7 @@
         aria-label="3D view of the Sun, Earth and Moon. Drag to rotate, scroll or pinch to zoom, arrow keys also rotate."
       ></canvas>
       <div id="loading">Building Earth…</div>
-      <div class="readout">
-        <div class="big"><b id="r-time"></b></div>
-        <div class="dim"><span id="r-utc"></span></div>
-        <div><span class="k">Earth–Moon</span> <b id="r-moon"></b></div>
-        <div><span class="k">Earth–Sun</span> <b id="r-sun"></b></div>
-        <div class="dim" id="r-scale"></div>
-      </div>
     </div>
-
-    <section class="cards">
-      <article class="card" id="card-phase">
-        <div class="row">
-          <svg id="phase-svg" viewBox="0 0 100 100" role="img" aria-label="Moon phase">
-            <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="1" />
-            <path id="phase-lit" fill="#ece7d6" />
-            <g style="mix-blend-mode: multiply" fill="#8a8d96" opacity="0.55">
-              <circle cx="38" cy="36" r="9" />
-              <circle cx="62" cy="58" r="12" />
-              <circle cx="44" cy="68" r="6" />
-              <circle cx="66" cy="30" r="5" />
-              <circle cx="30" cy="56" r="4" />
-            </g>
-            <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="1" />
-          </svg>
-          <div class="txt">
-            <h2 id="phase-name"></h2>
-            <p><b id="phase-lit-pct"></b> lit · day <b id="phase-age"></b> of 29.5</p>
-            <p>As seen from the northern hemisphere</p>
-          </div>
-        </div>
-        <p id="phase-next"></p>
-      </article>
-      <article class="card" id="card-boston">
-        <div class="txt">
-          <h2 id="bos-head"></h2>
-          <p id="bos-sun"></p>
-          <p id="bos-moon"></p>
-        </div>
-        <svg
-          id="sky-svg"
-          viewBox="0 0 360 110"
-          role="img"
-          aria-label="Sky over Boston: positions of the Sun and Moon"
-        >
-          <defs>
-            <linearGradient id="sky-g" x1="0" y1="0" x2="0" y2="1">
-              <stop id="sky-top" offset="0" stop-color="#050816" />
-              <stop id="sky-bot" offset="1" stop-color="#0d1430" />
-            </linearGradient>
-            <clipPath id="sky-clip"><rect width="360" height="110" rx="4" /></clipPath>
-          </defs>
-          <g clip-path="url(#sky-clip)">
-            <rect width="360" height="84" fill="url(#sky-g)" />
-            <rect y="84" width="360" height="26" fill="#0b1018" />
-            <line x1="0" y1="84" x2="360" y2="84" stroke="#ffffff" stroke-opacity="0.22" />
-            <g font-family="IBM Plex Mono, monospace" font-size="9" fill="#8f9bb2">
-              <text x="3" y="102">N</text>
-              <text x="90" y="102" text-anchor="middle">E</text>
-              <text x="180" y="102" text-anchor="middle">S</text>
-              <text x="270" y="102" text-anchor="middle">W</text>
-              <text x="357" y="102" text-anchor="end">N</text>
-            </g>
-            <g id="sky-sun">
-              <circle r="15" fill="#ffd98a" opacity="0.22" />
-              <circle r="7" fill="#ffd98a" />
-            </g>
-            <g id="sky-moon">
-              <circle r="7.5" fill="#151c2c" stroke="#44507a" stroke-width="0.8" />
-              <path id="sky-moon-lit" fill="#ece7d6" />
-            </g>
-          </g>
-        </svg>
-      </article>
-    </section>
 
     <div class="controls">
       <button id="play" type="button">Play</button>
@@ -138,13 +65,6 @@
         <option value="864000">10 days / sec</option>
       </select>
       <button id="datebtn" type="button" aria-pressed="false">Date</button>
-      <button id="scale" type="button" aria-pressed="false">True scale</button>
-      <select id="view" aria-label="Camera view" hidden>
-        <option value="earth">Earth close-up</option>
-        <option value="moon" selected>Earth &amp; Moon</option>
-        <option value="sun">Earth to Sun</option>
-        <option value="system">Solar system</option>
-      </select>
     </div>
 
     <div class="datebar" id="datebar" hidden>
@@ -154,14 +74,6 @@
       <button id="d-plus" type="button" aria-label="Forward one day">+1 day</button>
       <button id="d-now" type="button">Now</button>
     </div>
-
-    <p class="note">
-      Positions: Sun and Moon from the Astronomical Almanac low-precision formulas (Moon within
-      about 0.3°), planets from JPL approximate orbital elements. Checked against astropy. The
-      Boston sky ignores atmospheric refraction. In illustrative scale the Moon's distance is
-      compressed and the Sun is drawn close; Earth's shadow on the Moon (eclipses) only appears at
-      true scale. Land outlines: Natural Earth via world-atlas.
-    </p>
 
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -1,8 +1,11 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 
 export default defineConfig({
   test: {
     environment: "node",
+    // archive/ holds extracted-but-not-deleted code and its old tests (see
+    // notes/ui-direction.md) -- reference material, not run, not maintained.
+    exclude: [...configDefaults.exclude, "archive/**"],
     coverage: {
       provider: "v8",
       include: ["src/astronomy.js", "src/ui.js", "src/textures.js"],

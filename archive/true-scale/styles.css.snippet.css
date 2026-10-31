@@ -1,0 +1,5 @@
+/* Was in src/styles.css, in the .tag block. Only tagSun (see scene.js.snippet.js)
+   used this modifier. */
+.tag.sun {
+  color: var(--sun);
+}

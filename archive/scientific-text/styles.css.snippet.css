@@ -1,0 +1,32 @@
+.readout {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  right: 12px;
+  pointer-events: none;
+  font: 400 12px/1.55 var(--mono);
+  text-shadow: 0 1px 6px #000;
+}
+.readout .k {
+  color: var(--mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.readout b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.readout .big {
+  font-size: 13px;
+}
+.readout .dim {
+  color: var(--mute);
+}
+
+.note {
+  margin: 0;
+  font: 400 11px/1.55 var(--mono);
+  color: var(--mute);
+  max-width: 78ch;
+}

@@ -3,7 +3,9 @@ import globals from "globals";
 import prettier from "eslint-config-prettier";
 
 export default [
-  { ignores: ["dist/**", "node_modules/**"] },
+  // archive/ holds extracted-but-not-deleted code (see notes/ui-direction.md) --
+  // reference material, not maintained, not required to still pass lint.
+  { ignores: ["dist/**", "node_modules/**", "archive/**"] },
   js.configs.recommended,
   prettier,
   {
