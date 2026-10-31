@@ -1,0 +1,292 @@
+/* Layout: a WebGL stage on top, then two instrument cards (moon phase, Boston sky), then
+   one control strip. Single dark look by choice. */
+:root {
+  --bg: #05070d;
+  --stage: #02040a;
+  --ink: #e4e9f2;
+  --mute: #8f9bb2;
+  --line: #1d2639;
+  --panel: #0b1019;
+  --accent: #8fb8ff;
+  --sun: #ffd27a;
+  --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+body {
+  box-sizing: border-box;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 var(--display);
+  padding-block: 12px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 16px;
+}
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+.hint {
+  margin: 0;
+  font: 400 11px/1.4 var(--mono);
+  color: var(--mute);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#stage {
+  position: relative;
+  height: clamp(300px, 58vh, 680px);
+  min-width: 0;
+  background: var(--stage);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+#gl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
+}
+#gl:active {
+  cursor: grabbing;
+}
+#gl:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+#loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 400 12px/1 var(--mono);
+  color: var(--mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.readout {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  right: 12px;
+  pointer-events: none;
+  font: 400 12px/1.55 var(--mono);
+  text-shadow: 0 1px 6px #000;
+}
+.readout .k {
+  color: var(--mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.readout b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.readout .big {
+  font-size: 13px;
+}
+.readout .dim {
+  color: var(--mute);
+}
+.tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  font: 500 11px/1 var(--mono);
+  color: var(--accent);
+  will-change: transform;
+}
+.tag::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+.tag span {
+  position: absolute;
+  left: 14px;
+  top: -6px;
+  text-shadow: 0 1px 4px #000;
+  white-space: nowrap;
+}
+.tag.sun {
+  color: var(--sun);
+}
+.tag.dot {
+  color: #ff8a6b;
+}
+.tag.dot::before {
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+}
+.tag.dot span {
+  left: 9px;
+}
+.tag.ptr {
+  color: var(--sun);
+}
+.tag.ptr::before {
+  display: none;
+}
+.tag.ptr svg {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+}
+.tag.ptr span {
+  left: 12px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+.card {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card .row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.card .txt {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.card p {
+  margin: 0;
+  color: var(--mute);
+  font: 400 12px/1.45 var(--mono);
+}
+.card p b {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+#phase-svg {
+  flex: none;
+  width: 88px;
+  height: 88px;
+}
+#sky-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.controls > * {
+  min-width: 0;
+}
+button,
+select,
+input[type="datetime-local"] {
+  font: 500 13px/1 var(--display);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+button {
+  cursor: pointer;
+}
+button:hover,
+select:hover {
+  border-color: var(--mute);
+}
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#play {
+  min-width: 74px;
+}
+.datebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.datebar label {
+  font: 400 11px/1 var(--mono);
+  color: var(--mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+input[type="datetime-local"] {
+  color-scheme: dark;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.note {
+  margin: 0;
+  font: 400 11px/1.55 var(--mono);
+  color: var(--mute);
+  max-width: 78ch;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
+}
