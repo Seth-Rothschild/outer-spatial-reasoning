@@ -6,6 +6,7 @@ import {
   moonPosition,
   greenwichSiderealTime,
   obliquityOfEcliptic,
+  moonSunElongation,
   eclipticToScene,
   earthFixedToScene,
   keplerianPosition,
@@ -69,6 +70,15 @@ describe("greenwichSiderealTime", () => {
 describe("obliquityOfEcliptic", () => {
   it("matches the known value at J2000.0", () => {
     expect(obliquityOfEcliptic(2451545.0)).toBeCloseTo(23.4392911, 7);
+  });
+});
+
+describe("moonSunElongation", () => {
+  it("stays within [0, 360)", () => {
+    const jd = julianDateFromUnixMs(Date.now());
+    const elongation = moonSunElongation(jd);
+    expect(elongation).toBeGreaterThanOrEqual(0);
+    expect(elongation).toBeLessThan(360);
   });
 });
 

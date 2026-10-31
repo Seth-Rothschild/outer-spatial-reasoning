@@ -46,12 +46,17 @@ h2 {
   letter-spacing: -0.005em;
   text-wrap: balance;
 }
-.hint {
-  margin: 0;
-  font: 400 11px/1.4 var(--mono);
+.now {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px/1 var(--mono);
   color: var(--mute);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+}
+#phase-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 #stage {
   position: relative;

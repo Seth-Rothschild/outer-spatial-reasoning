@@ -82,6 +82,11 @@ export function obliquityOfEcliptic(jd) {
   return 23.4392911 - 0.0130042 * ((jd - J2000) / 36525);
 }
 
+// Degrees between Moon and Sun as seen from Earth: 0 = new moon, 180 = full moon.
+export function moonSunElongation(jd) {
+  return normalizeDegrees(moonPosition(jd).longitude - sunPosition(jd).longitude);
+}
+
 // ---- Coordinate frames ------------------------------------------------------------
 // Scene axes: x points toward the vernal equinox, y toward the north ecliptic pole,
 // z = -y-of-ecliptic (so x/y/z form the right-handed frame Three.js expects).

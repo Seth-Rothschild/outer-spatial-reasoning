@@ -43,7 +43,14 @@
   <body>
     <header>
       <h1>Outer Spatial Reasoning</h1>
-      <p class="hint">Drag to rotate · pinch or scroll to zoom</p>
+      <div class="now">
+        <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
+          <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
+          <path id="phase-lit" fill="#ece7d6" />
+          <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
+        </svg>
+        <span id="r-time"></span>
+      </div>
     </header>
 
     <div id="stage">

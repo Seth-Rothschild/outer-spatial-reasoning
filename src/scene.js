@@ -13,9 +13,10 @@ import {
   eclipticToScene,
   earthFixedToScene,
   julianDateFromUnixMs,
+  moonSunElongation,
 } from "./astronomy.js";
 import { earthTexture, cloudTexture, moonTexture, sunGlowTexture } from "./textures.js";
-import { bostonTimeToUnixMs, unixMsToDatetimeInput } from "./ui.js";
+import { bostonTimeToUnixMs, unixMsToDatetimeInput, formatFullDate, litDiscPath } from "./ui.js";
 
 const BOSTON_LATITUDE = 42.3601;
 const BOSTON_LONGITUDE = -71.0589;
@@ -273,6 +274,8 @@ export function initScene() {
     const dateButton = $("datebtn");
     const dateBar = $("datebar");
     const whenInput = $("when");
+    const headerTime = $("r-time");
+    const phaseLitPath = $("phase-lit");
 
     playButton.textContent = playing ? "Pause" : "Play";
     playButton.addEventListener("click", () => {
@@ -378,7 +381,7 @@ export function initScene() {
     else window.addEventListener("resize", resize);
     resize();
 
-    let lastDateBarUpdateMs = 0;
+    let lastPeriodicUpdateMs = 0;
     let astro = {}; // latest per-frame astronomy computation, read by the render loop
 
     // ---- per-frame astronomy -------------------------------------------------------
@@ -581,13 +584,13 @@ export function initScene() {
       placeBostonTag();
       updateSunPointer(sunDisplayPos);
 
-      if (
-        !dateBar.hidden &&
-        document.activeElement !== whenInput &&
-        now - lastDateBarUpdateMs > 400
-      ) {
-        lastDateBarUpdateMs = now;
-        whenInput.value = unixMsToDatetimeInput(simulatedMs);
+      if (now - lastPeriodicUpdateMs > 400) {
+        lastPeriodicUpdateMs = now;
+        headerTime.textContent = formatFullDate.format(simulatedMs);
+        phaseLitPath.setAttribute("d", litDiscPath(50, 50, 46, moonSunElongation(astro.jd)));
+        if (!dateBar.hidden && document.activeElement !== whenInput) {
+          whenInput.value = unixMsToDatetimeInput(simulatedMs);
+        }
       }
 
       requestAnimationFrame(renderFrame);
