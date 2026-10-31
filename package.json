@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "crap": "node scripts/crap-report.mjs"
+    "crap": "node scripts/crap-report.mjs",
+    "visual-check": "node scripts/visual-check.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"
@@ -25,6 +26,7 @@
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
+    "playwright": "^1.64.1",
     "prettier": "^3.9.10",
     "vite": "^8.3.5",
     "vite-plugin-singlefile": "^2.3.4",
