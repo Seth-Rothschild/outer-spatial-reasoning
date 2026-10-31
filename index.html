@@ -102,7 +102,7 @@
       <canvas
         id="gl"
         tabindex="0"
-        aria-label="3D view of the solar system: the Sun, all eight planets, and Earth's Moon, each orbiting at their real relative speed. Drag to rotate, scroll or pinch to zoom, arrow keys also rotate. The Moon/Sun/Phases buttons switch between viewing from Earth and a close-up of the Moon; the Orrery button pulls back to a wide view of every planet's orbit."
+        aria-label="3D view of the solar system: the Sun, all eight planets, and Earth's Moon, each orbiting at their real relative speed. Drag to rotate, scroll or pinch to zoom, arrow keys also rotate. The Sun/Mercury/Venus/Earth/Moon/Mars/Jupiter/Saturn/Uranus/Neptune buttons each switch to a close-up facing that body's sunlit side (the Moon button instead shows its real current phase, as seen from Earth); the Moon from Earth button views the Moon from Earth."
       ></canvas>
       <div id="loading">Building Earth…</div>
       <div class="phase-info" id="phase-info" hidden>
@@ -117,13 +117,19 @@
 
     <div class="controls">
       <div class="viewgroup" role="group" aria-label="Camera view">
-        <button id="view-moon" type="button" aria-pressed="true">Moon</button>
         <button id="view-sun" type="button" aria-pressed="false">Sun</button>
-        <button id="view-phases" type="button" aria-pressed="false">Phases</button>
-        <button id="view-orrery" type="button" aria-pressed="false">Orrery</button>
+        <button id="view-mercury" type="button" aria-pressed="false">Mercury</button>
+        <button id="view-venus" type="button" aria-pressed="false">Venus</button>
+        <button id="view-earth" type="button" aria-pressed="false">Earth</button>
+        <button id="view-moon" type="button" aria-pressed="false">Moon</button>
+        <button id="view-moonFromEarth" type="button" aria-pressed="true">Moon from Earth</button>
+        <button id="view-mars" type="button" aria-pressed="false">Mars</button>
+        <button id="view-jupiter" type="button" aria-pressed="false">Jupiter</button>
+        <button id="view-saturn" type="button" aria-pressed="false">Saturn</button>
+        <button id="view-uranus" type="button" aria-pressed="false">Uranus</button>
+        <button id="view-neptune" type="button" aria-pressed="false">Neptune</button>
         <button id="view-custom" type="button" aria-pressed="false" disabled>Custom</button>
       </div>
-      <button id="play" type="button">Pause</button>
       <select id="speed" aria-label="Playback speed">
         <option value="1" selected>Real time</option>
         <option value="3600">1 hour / sec</option>

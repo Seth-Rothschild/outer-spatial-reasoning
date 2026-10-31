@@ -51,8 +51,10 @@ const MOON_DISTANCE_TRUE_AVERAGE = 60.27; // scales the illustrative distance re
 const SUN_RADIUS_ILLUSTRATIVE = 6; // comfortably bigger than Jupiter's display radius (~1.9, see orreryDisplayPlanetRadius)
 
 const ORRERY_ORBIT_SEGMENTS = 160;
-const ORRERY_CAMERA_DISTANCE = 480; // far enough back to frame Neptune's orbit (~118 Earth radii out)
-const ORRERY_CAMERA_MIN_DISTANCE = 30;
+
+// Reused by planetNearSide's minDistance below, so Saturn's near-side viewpoint
+// clears the rings rather than just the planet's own sphere.
+const SATURN_RING_OUTER_RADIUS_FACTOR = 2.3;
 
 const CAMERA_FOV_DEG = 40;
 const MAX_ZOOM_FACTOR = 3;
@@ -96,20 +98,14 @@ const EARTH_TOWARD_MOON = {
   distance: 5, // close enough that Earth reads as the foreground subject
   minDistance: 1.6, // stay just outside Earth's radius (1) even at max zoom
   defaultYaw: Math.PI, // sit on the far side of Earth from the Moon, so it reads behind Earth
-  defaultPitch: 0.45,
-};
-const EARTH_TOWARD_SUN = {
-  anchor: (frame) => frame.earthDisplayPos,
-  frameToward: (frame) => frame.sunDisplayPos,
-  distance: 8, // farther back than the Moon view: Earth's bulk eclipses the Sun at close range
-  minDistance: 1.6,
-  defaultYaw: Math.PI, // sit on the far side of Earth from the Sun, so it reads behind Earth
-  defaultPitch: 0.15, // the Sun sits near the ecliptic plane, so a lower vantage keeps it in view
+  defaultPitch: 0.65, // high enough that the Moon clears Earth's silhouette instead of sitting at its edge, where it was often fully occluded
 };
 // Anchored on the Moon itself rather than Earth, and sitting on its near side (the
 // Earth-facing side, since frameToward is Earth's own position and defaultYaw is 0,
 // not Math.PI) -- the same side every Moon phase is actually observed from, just
-// much closer than the view from Earth allows.
+// much closer than the view from Earth allows. Lit however the real Sun happens to
+// be lighting that side right now, which is what makes this the phase view
+// (full/new/etc. just falls out of the Moon's real position relative to the Sun).
 const MOON_NEAR_SIDE = {
   anchor: (frame) => frame.moonDisplayPos,
   frameToward: (frame) => frame.earthDisplayPos,
@@ -120,28 +116,80 @@ const MOON_NEAR_SIDE = {
 };
 
 // An arbitrary point distinct from SUN_ORIGIN -- frameToward just needs to differ
-// from the anchor so the camera has a direction to compute its default yaw from, and
-// this overview has no single subject to actually orient toward (unlike the Moon/Sun
-// views, where the other body IS that subject).
+// from the anchor so the camera has a direction to compute its default yaw from.
+// Used by SUN_NEAR below: the Sun itself has no other body worth facing toward, the
+// way the near-side views below face each other body toward the Sun.
 const SYSTEM_FRAME_TOWARD = new THREE.Vector3(1, 0, 0);
-const SYSTEM_VIEWPOINT = {
-  anchor: () => SUN_ORIGIN,
-  frameToward: () => SYSTEM_FRAME_TOWARD,
-  distance: ORRERY_CAMERA_DISTANCE,
-  minDistance: ORRERY_CAMERA_MIN_DISTANCE,
-  defaultYaw: 0,
-  defaultPitch: 0.95, // high enough to read the orbits as concentric rings, not edge-on
-};
 
-// Keyed by the view-selector button that activates it; see setActiveViewpoint(). All
-// of these look at the same, always-populated scene -- the planets are always there,
-// whichever Viewpoint you're using (this used to be a separate "Orrery" scene that
-// hid the Earth/Moon/Sun view; now it's just another camera angle on the one scene).
+// A close-up facing the given anchor body's lit side: defaultYaw 0 places the camera
+// in the direction of frameToward from the anchor, so the body reads as a nearby,
+// mostly-lit sphere rather than a silhouette -- the same relationship MOON_NEAR_SIDE
+// above has with Earth, generalized to frame toward the Sun instead (or, for the Sun
+// itself, toward SYSTEM_FRAME_TOWARD, since it has no other body to face). Shared by
+// the Sun's own viewpoint, Earth's, and each other planet's, so they read consistently.
+const PLANET_NEAR_SIDE_DISTANCE_FACTOR = 4; // display radii out: close enough to read surface texture
+const PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR = 1.3; // stay just outside the body's own radius at max zoom
+function nearSideTowardSun(anchorFn, frameTowardFn, displayRadius, minDistanceFactor) {
+  return {
+    anchor: anchorFn,
+    frameToward: frameTowardFn,
+    distance: displayRadius * PLANET_NEAR_SIDE_DISTANCE_FACTOR,
+    minDistance: displayRadius * minDistanceFactor,
+    defaultYaw: 0,
+    defaultPitch: 0.12,
+  };
+}
+
+const SUN_NEAR = nearSideTowardSun(
+  () => SUN_ORIGIN,
+  () => SYSTEM_FRAME_TOWARD,
+  SUN_RADIUS_ILLUSTRATIVE,
+  PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR,
+);
+const EARTH_NEAR_SIDE = nearSideTowardSun(
+  (frame) => frame.earthDisplayPos,
+  (frame) => frame.sunDisplayPos,
+  1,
+  PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR,
+);
+
+// Generalizes nearSideTowardSun to any of the other seven planets, reading their real
+// size (for framing distance) out of PLANETS/orreryDisplayPlanetRadius. Saturn's rings
+// reach past its own sphere (see buildSaturnRing), so its minDistance clears them
+// instead of just the planet.
+function planetNearSide(planetName) {
+  const planet = PLANETS.find((candidate) => candidate.name === planetName);
+  const displayRadius = orreryDisplayPlanetRadius(planet.radiusEarths);
+  const minDistanceFactor =
+    planetName === "Saturn"
+      ? SATURN_RING_OUTER_RADIUS_FACTOR + 0.2 // clear the rings, not just the sphere
+      : PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR;
+  return nearSideTowardSun(
+    (frame) => frame.planetDisplayPos(planetName),
+    (frame) => frame.sunDisplayPos,
+    displayRadius,
+    minDistanceFactor,
+  );
+}
+
+// Keyed by the view-selector button that activates it, in the same left-to-right
+// order the buttons appear in index.html -- Sun-outward through the planets, with
+// Earth's own two views (its near side, and the view from Earth toward the Moon)
+// grouped together where Earth falls in that order. See setActiveViewpoint(). All of
+// these look at the same, always-populated scene -- the planets are always there,
+// whichever Viewpoint you're using.
 const VIEWPOINTS = {
-  moon: EARTH_TOWARD_MOON,
-  sun: EARTH_TOWARD_SUN,
-  phases: MOON_NEAR_SIDE,
-  orrery: SYSTEM_VIEWPOINT,
+  sun: SUN_NEAR,
+  mercury: planetNearSide("Mercury"),
+  venus: planetNearSide("Venus"),
+  earth: EARTH_NEAR_SIDE,
+  moon: MOON_NEAR_SIDE,
+  moonFromEarth: EARTH_TOWARD_MOON,
+  mars: planetNearSide("Mars"),
+  jupiter: planetNearSide("Jupiter"),
+  saturn: planetNearSide("Saturn"),
+  uranus: planetNearSide("Uranus"),
+  neptune: planetNearSide("Neptune"),
 };
 
 export function initScene() {
@@ -409,7 +457,7 @@ export function initScene() {
   // its fraction of the way from the inner to the outer edge.
   function buildSaturnRing(planetRadius) {
     const innerRadius = planetRadius * 1.3;
-    const outerRadius = planetRadius * 2.3;
+    const outerRadius = planetRadius * SATURN_RING_OUTER_RADIUS_FACTOR;
     const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 128);
     const position = geometry.attributes.position;
     const uv = geometry.attributes.uv;
@@ -473,7 +521,6 @@ export function initScene() {
   function runSimulation() {
     // ---- simulated time and camera state ------------------------------------------
     let simulatedMs = Date.now();
-    let playing = true;
     let speedSecondsPerSecond = 1;
 
     // Set by animateTimeTo() (the day-jump buttons, Now, and the date picker) to ease
@@ -483,14 +530,14 @@ export function initScene() {
     // speedSecondsPerSecond every frame as usual.
     let timeTween = null; // { fromMs, toMs, startedAtMs }
 
-    // Reassigned by setActiveViewpoint() when the user picks Moon or Sun.
-    let activeViewpointKey = "moon";
+    // Reassigned by setActiveViewpoint() when the user picks another view.
+    let activeViewpointKey = "moonFromEarth";
     let activeViewpoint = VIEWPOINTS[activeViewpointKey];
 
     // The user's drag/keyboard offset from the active Viewpoint's own default
     // framing (defaultYaw/defaultPitch). Nonzero once the user has panned or
     // zoomed away from that default -- see markCustomFraming() -- and reset to 0
-    // by setActiveViewpoint() when they pick Moon or Sun again.
+    // by setActiveViewpoint() when they pick another preset view again.
     let cameraYawOffset = 0;
     let cameraPitchOffset = 0;
     let zoomFactor = 1;
@@ -526,7 +573,6 @@ export function initScene() {
     const sunPointerArrow = tagSunPointer.querySelector("svg");
 
     // ---- controls -----------------------------------------------------------------
-    const playButton = $("play");
     const speedSelect = $("speed");
     const nowToggle = $("now-toggle");
     const dateBar = $("datebar");
@@ -568,10 +614,10 @@ export function initScene() {
       cameraDistance = activeViewpoint.distance;
       isCustomFraming = false;
       // Toggled here rather than waiting for the periodic update tick, so switching
-      // away from the Phases view hides the panel immediately instead of up to 400ms
-      // late; its text content still only refreshes on that tick, which is fine since
-      // it's already showing the right phase by the time it reappears.
-      phaseInfo.hidden = key !== "phases";
+      // away from the Moon (phase) view hides the panel immediately instead of up to
+      // 400ms late; its text content still only refreshes on that tick, which is fine
+      // since it's already showing the right phase by the time it reappears.
+      phaseInfo.hidden = key !== "moon";
       updateViewButtons();
     }
     for (const [key, button] of presetViewButtons) {
@@ -579,11 +625,6 @@ export function initScene() {
     }
     updateViewButtons();
 
-    playButton.textContent = playing ? "Pause" : "Play";
-    playButton.addEventListener("click", () => {
-      playing = !playing;
-      playButton.textContent = playing ? "Pause" : "Play";
-    });
     // Browsers restore a <select>'s previously-chosen option across reloads,
     // overriding the HTML's `selected` attribute -- force it back in sync with our
     // actual default so a stale dropdown choice from an earlier visit can't silently
@@ -831,8 +872,9 @@ export function initScene() {
     // so the default vantage point drifts with that body's real position on its
     // own, continuously -- dragging just adds your own yaw/pitch/zoom on top of
     // that moving baseline, so nothing ever jumps. `frame` carries whatever
-    // positions any Viewpoint's anchor/frameToward functions need: today that's
-    // moonDisplayPos and sunDisplayPos.
+    // positions any Viewpoint's anchor/frameToward functions need: moonDisplayPos,
+    // sunDisplayPos, and planetDisplayPos (a lookup by name, for the other
+    // planets' near-side viewpoints).
     function updateCamera(dt, frame) {
       const anchor = activeViewpoint.anchor(frame);
       const lookAtPosition = anchor;
@@ -881,7 +923,7 @@ export function initScene() {
         simulatedMs =
           timeTween.fromMs + (timeTween.toMs - timeTween.fromMs) * easeInOutCubic(progress);
         if (progress >= 1) timeTween = null;
-      } else if (playing) {
+      } else {
         simulatedMs += speedSecondsPerSecond * 1000 * dt;
       }
       computeAstronomy();
@@ -916,16 +958,34 @@ export function initScene() {
       moon.position.copy(moonDisplayPos);
       moon.quaternion.setFromUnitVectors(X_AXIS, moonDirection.clone().negate()); // tidally locked: near side faces Earth
 
-      sunLight.position.copy(moonDisplayPos).addScaledVector(sunDirection, 300);
-      sunLight.target.position.copy(moonDisplayPos);
-
       for (const name in planetBodies) {
         const { pivot, sphere, elements, rotationHours } = planetBodies[name];
         pivot.position.fromArray(orreryScenePosition(elements, ORRERY_ORBIT_RADII[name], astro.jd));
         sphere.rotation.y = planetRotationAngle(rotationHours, astro.jd);
       }
 
-      updateCamera(dt, { earthDisplayPos, moonDisplayPos, sunDisplayPos });
+      const frame = {
+        earthDisplayPos,
+        moonDisplayPos,
+        sunDisplayPos,
+        planetDisplayPos: (name) => planetBodies[name].pivot.position,
+      };
+
+      // sunLight is directional (parallel rays), which only reads correctly on
+      // whichever body it's aimed at -- the Sun is close enough to the planets
+      // (unlike a true distant star) that the direction toward it from Jupiter, say,
+      // can be very different from the direction toward it from Earth. So the light
+      // tracks whichever body the active viewpoint is actually examining, rather than
+      // always assuming Earth/Moon, falling back to Earth when the viewpoint's anchor
+      // is the Sun itself (the Sun view) and there's no single nearby body's
+      // terminator on screen to get wrong.
+      const lightedBodyPos = activeViewpoint.anchor(frame);
+      const lightSourcePos = lightedBodyPos === sunDisplayPos ? earthDisplayPos : lightedBodyPos;
+      const localSunDirection = sunDisplayPos.clone().sub(lightSourcePos).normalize();
+      sunLight.position.copy(lightSourcePos).addScaledVector(localSunDirection, 300);
+      sunLight.target.position.copy(lightSourcePos);
+
+      updateCamera(dt, frame);
 
       renderer.render(scene, camera);
 
@@ -940,7 +1000,7 @@ export function initScene() {
         if (!dateBar.hidden && document.activeElement !== whenInput) {
           whenInput.value = unixMsToDatetimeInput(simulatedMs);
         }
-        if (activeViewpointKey === "phases") {
+        if (activeViewpointKey === "moon") {
           phaseNameEl.textContent = moonPhaseName(elongation);
           const litPercent = Math.round(moonIlluminatedFraction(elongation) * 100);
           phasePercentEl.textContent = `${litPercent}% lit`;

@@ -267,11 +267,9 @@ button:disabled {
 button:disabled[aria-pressed="true"] {
   opacity: 1;
 }
-#play {
-  min-width: 74px;
-}
 .viewgroup {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 3px;
   background: var(--panel);
