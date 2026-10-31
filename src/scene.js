@@ -21,8 +21,14 @@ import {
   planetRotationAngle,
   ORRERY_ORBIT_RADII,
 } from "./astronomy.js";
-import { earthTexture, cloudTexture, moonTexture, sunGlowTexture } from "./textures.js";
-import { PLANET_TEXTURE_URLS, SATURN_RING_TEXTURE_URL } from "./planetTextures.js";
+import { sunGlowTexture } from "./textures.js";
+import {
+  EARTH_TEXTURE_URL,
+  EARTH_CLOUDS_TEXTURE_URL,
+  MOON_TEXTURE_URL,
+  PLANET_TEXTURE_URLS,
+  SATURN_RING_TEXTURE_URL,
+} from "./bodyTextures.js";
 import {
   bostonTimeToUnixMs,
   unixMsToDatetimeInput,
@@ -154,10 +160,40 @@ export function initScene() {
   const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, 0.05, 5000);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-  function textureFrom(canvasSource) {
-    const texture = new THREE.CanvasTexture(canvasSource);
+  const textureLoader = new THREE.TextureLoader();
+
+  function loadTexture(url) {
+    const texture = textureLoader.load(url);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = maxAnisotropy;
+    return texture;
+  }
+
+  // The real cloud photo is a grayscale density map (white = cloud), not an RGBA
+  // image, so an opaque load of it would look like a solid black-and-white shell
+  // instead of translucent cloud cover. Loads it, then rewrites its pixels in place
+  // once decoded: brightness becomes the alpha channel, and the color becomes flat
+  // white, the same way textureFrom's canvases already carry their own alpha.
+  function loadCloudTexture(url) {
+    const texture = new THREE.Texture();
+    textureLoader.load(url, (loaded) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = loaded.image.width;
+      canvas.height = loaded.image.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(loaded.image, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        pixels[i + 3] = pixels[i]; // cloud brightness -> alpha
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = 255; // flat white clouds
+      }
+      ctx.putImageData(imageData, 0, 0);
+      texture.image = canvas;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = maxAnisotropy;
+      texture.needsUpdate = true;
+    });
     return texture;
   }
 
@@ -207,7 +243,7 @@ export function initScene() {
     earth = new THREE.Mesh(
       new THREE.SphereGeometry(1, 128, 96),
       new THREE.MeshStandardMaterial({
-        map: textureFrom(earthTexture()),
+        map: loadTexture(EARTH_TEXTURE_URL),
         roughness: 0.85,
         metalness: 0,
       }),
@@ -217,7 +253,7 @@ export function initScene() {
     clouds = new THREE.Mesh(
       new THREE.SphereGeometry(1.012, 96, 64),
       new THREE.MeshStandardMaterial({
-        map: textureFrom(cloudTexture()),
+        map: loadCloudTexture(EARTH_CLOUDS_TEXTURE_URL),
         transparent: true,
         depthWrite: false,
         roughness: 1,
@@ -275,7 +311,7 @@ export function initScene() {
     moon = new THREE.Mesh(
       new THREE.SphereGeometry(MOON_RADIUS_EARTHS, 64, 48),
       new THREE.MeshStandardMaterial({
-        map: textureFrom(moonTexture()),
+        map: loadTexture(MOON_TEXTURE_URL),
         roughness: 1,
         metalness: 0,
       }),
@@ -320,8 +356,6 @@ export function initScene() {
   // ORRERY_ORBIT_RADII and orreryDisplayPlanetRadius in astronomy.js). Always part of
   // the scene -- there's no separate mode to switch into to see them.
   function buildPlanets() {
-    const textureLoader = new THREE.TextureLoader();
-
     function orbitRing(elements, assignedRadius) {
       const points = orreryOrbitPoints(elements, assignedRadius, ORRERY_ORBIT_SEGMENTS).map(
         vecFromArray,
@@ -333,13 +367,6 @@ export function initScene() {
         opacity: 0.6,
       });
       return new THREE.LineLoop(geometry, material);
-    }
-
-    function loadPlanetTexture(url) {
-      const texture = textureLoader.load(url);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = maxAnisotropy;
-      return texture;
     }
 
     scene.add(orbitRing(EARTH_ELEMENTS, ORRERY_ORBIT_RADII.Earth));
@@ -359,7 +386,7 @@ export function initScene() {
       const sphere = new THREE.Mesh(
         new THREE.SphereGeometry(displayRadius, 64, 48),
         new THREE.MeshStandardMaterial({
-          map: loadPlanetTexture(PLANET_TEXTURE_URLS[planet.name]),
+          map: loadTexture(PLANET_TEXTURE_URLS[planet.name]),
           roughness: 0.9,
           metalness: 0,
         }),
@@ -372,7 +399,7 @@ export function initScene() {
         rotationHours: planet.rotationHours,
       };
 
-      if (planet.name === "Saturn") pivot.add(buildSaturnRing(displayRadius, textureLoader));
+      if (planet.name === "Saturn") pivot.add(buildSaturnRing(displayRadius));
     }
   }
 
@@ -380,7 +407,7 @@ export function initScene() {
   // default UVs run angularly around the ring, which would smear that map instead of
   // showing its inner-to-outer gradient -- so each vertex's UV.x is remapped here to
   // its fraction of the way from the inner to the outer edge.
-  function buildSaturnRing(planetRadius, textureLoader) {
+  function buildSaturnRing(planetRadius) {
     const innerRadius = planetRadius * 1.3;
     const outerRadius = planetRadius * 2.3;
     const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 128);
@@ -392,12 +419,10 @@ export function initScene() {
       uv.setXY(i, (vertex.length() - innerRadius) / (outerRadius - innerRadius), 1);
     }
 
-    const ringTexture = textureLoader.load(SATURN_RING_TEXTURE_URL);
-    ringTexture.colorSpace = THREE.SRGBColorSpace;
     const ring = new THREE.Mesh(
       geometry,
       new THREE.MeshBasicMaterial({
-        map: ringTexture,
+        map: loadTexture(SATURN_RING_TEXTURE_URL),
         transparent: true,
         side: THREE.DoubleSide,
       }),
