@@ -530,6 +530,8 @@ export function initScene() {
     const speedSelect = $("speed");
     const nowToggle = $("now-toggle");
     const dateBar = $("datebar");
+    const infoToggle = $("info-toggle");
+    const infoPanel = $("info-panel");
     const whenInput = $("when");
     const headerTime = $("r-time");
     const phaseLitPath = $("phase-lit");
@@ -594,6 +596,10 @@ export function initScene() {
       dateBar.hidden = !dateBar.hidden;
       nowToggle.setAttribute("aria-expanded", String(!dateBar.hidden));
       whenInput.value = unixMsToDatetimeInput(simulatedMs);
+    });
+    infoToggle.addEventListener("click", () => {
+      infoPanel.hidden = !infoPanel.hidden;
+      infoToggle.setAttribute("aria-expanded", String(!infoPanel.hidden));
     });
     // Eases simulatedMs to targetMs over TIME_JUMP_DURATION_MS instead of snapping to
     // it; see renderFrame(), which advances the tween each frame. Restarting from

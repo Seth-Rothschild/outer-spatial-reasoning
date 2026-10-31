@@ -43,21 +43,60 @@
   <body>
     <header>
       <h1>Outer Spatial Reasoning</h1>
-      <button
-        type="button"
-        id="now-toggle"
-        class="now"
-        aria-expanded="false"
-        aria-controls="datebar"
-      >
-        <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
-          <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
-          <path id="phase-lit" fill="#ece7d6" />
-          <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
-        </svg>
-        <span id="r-time"></span>
-      </button>
+      <div class="header-actions">
+        <button
+          type="button"
+          id="now-toggle"
+          class="now"
+          aria-expanded="false"
+          aria-controls="datebar"
+        >
+          <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
+            <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
+            <path id="phase-lit" fill="#ece7d6" />
+            <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
+          </svg>
+          <span id="r-time"></span>
+        </button>
+        <button
+          type="button"
+          id="info-toggle"
+          class="info-toggle"
+          aria-expanded="false"
+          aria-controls="info-panel"
+          aria-label="About, credits, and source"
+        >
+          i
+        </button>
+      </div>
     </header>
+
+    <div class="info-panel" id="info-panel" hidden>
+      <p>
+        <a
+          href="https://github.com/Seth-Rothschild/outer-spatial-reasoning"
+          target="_blank"
+          rel="noopener"
+        >
+          Source on GitHub
+        </a>
+      </p>
+      <p>
+        Code licensed under
+        <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener"
+          >GPL-3.0</a
+        >.
+      </p>
+      <p>
+        Planet, Earth, and Moon textures by
+        <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener"
+          >Solar System Scope</a
+        >, licensed
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener"
+          >CC BY 4.0</a
+        >.
+      </p>
+    </div>
 
     <div id="stage">
       <canvas

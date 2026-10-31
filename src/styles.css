@@ -46,6 +46,11 @@ h2 {
   letter-spacing: -0.005em;
   text-wrap: balance;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .now {
   display: flex;
   align-items: center;
@@ -60,6 +65,42 @@ h2 {
 .now:hover,
 .now:focus-visible {
   color: var(--ink);
+}
+.info-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--mute);
+  font: 700 12px/1 var(--mono);
+  padding: 0;
+  cursor: pointer;
+}
+.info-toggle:hover,
+.info-toggle:focus-visible {
+  color: var(--ink);
+  border-color: var(--mute);
+}
+.info-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 400 12px/1.5 var(--display);
+  color: var(--mute);
+}
+.info-panel p {
+  margin: 0;
+}
+.info-panel a {
+  color: var(--accent);
 }
 #phase-icon {
   flex: none;
