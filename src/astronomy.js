@@ -128,11 +128,14 @@ export function earthFixedToScene(vector, siderealDeg, obliquityDeg) {
 // per Julian century: semi-major axis (AU), eccentricity, inclination, mean longitude,
 // longitude of perihelion, longitude of ascending node (angles in degrees).
 
+// rotationHours is each planet's real sidereal rotation period; negative means it
+// spins retrograde (backwards relative to its orbit), like Venus and Uranus.
 export const PLANETS = [
   {
     name: "Mercury",
     color: 0xb8b2a8,
     radiusEarths: 0.383,
+    rotationHours: 1407.6,
     elements: [
       0.38709927, 0.00000037, 0.20563593, 0.00001906, 7.00497902, -0.00594749, 252.2503235,
       149472.67411175, 77.45779628, 0.16047689, 48.33076593, -0.12534081,
@@ -142,6 +145,7 @@ export const PLANETS = [
     name: "Venus",
     color: 0xe8cf9a,
     radiusEarths: 0.949,
+    rotationHours: -5832.6,
     elements: [
       0.72333566, 0.0000039, 0.00677672, -0.00004107, 3.39467605, -0.0007889, 181.9790995,
       58517.81538729, 131.60246718, 0.00268329, 76.67984255, -0.27769418,
@@ -151,6 +155,7 @@ export const PLANETS = [
     name: "Mars",
     color: 0xd9694a,
     radiusEarths: 0.532,
+    rotationHours: 24.6229,
     elements: [
       1.52371034, 0.00001847, 0.0933941, 0.00007882, 1.84969142, -0.00813131, -4.55343205,
       19140.30268499, -23.94362959, 0.44441088, 49.55953891, -0.29257343,
@@ -160,6 +165,7 @@ export const PLANETS = [
     name: "Jupiter",
     color: 0xd8b48a,
     radiusEarths: 11.21,
+    rotationHours: 9.925,
     elements: [
       5.202887, -0.00011607, 0.04838624, -0.00013253, 1.30439695, -0.00183714, 34.39644051,
       3034.74612775, 14.72847983, 0.21252668, 100.47390909, 0.20469106,
@@ -169,6 +175,7 @@ export const PLANETS = [
     name: "Saturn",
     color: 0xe6d29c,
     radiusEarths: 9.45,
+    rotationHours: 10.656,
     elements: [
       9.53667594, -0.0012506, 0.05386179, -0.00050991, 2.48599187, 0.00193609, 49.95424423,
       1222.49362201, 92.59887831, -0.41897216, 113.66242448, -0.28867794,
@@ -178,6 +185,7 @@ export const PLANETS = [
     name: "Uranus",
     color: 0x9fd8e0,
     radiusEarths: 4.01,
+    rotationHours: -17.24,
     elements: [
       19.18916464, -0.00196176, 0.04725744, -0.00004397, 0.77263783, -0.00242939, 313.23810451,
       428.48202785, 170.9542763, 0.40805281, 74.01692503, 0.04240589,
@@ -187,6 +195,7 @@ export const PLANETS = [
     name: "Neptune",
     color: 0x6f8fe8,
     radiusEarths: 3.88,
+    rotationHours: 16.11,
     elements: [
       30.06992276, 0.00026291, 0.00859048, 0.00005105, 1.77004347, 0.00035372, -55.12002969,
       218.45945325, 44.96476227, -0.32241464, 131.78422574, -0.00508664,
@@ -252,4 +261,93 @@ export function planetScenePosition(planet, jd) {
   const centuriesSinceJ2000 = (jd - J2000) / 36525;
   const [x, y, z] = keplerianPosition(planet.elements, centuriesSinceJ2000, 0, true);
   return [x * AU_IN_EARTH_RADII, z * AU_IN_EARTH_RADII, -y * AU_IN_EARTH_RADII];
+}
+
+// A planet's current rotation about its own axis (radians), from its real sidereal
+// rotation period: a pure function of jd (like clouds.rotation.y in scene.js) rather
+// than something accumulated frame to frame, so it's correct immediately after a time
+// jump instead of needing to "catch up". A negative rotationHours (Venus, Uranus)
+// naturally flips the sign, giving retrograde spin.
+export function planetRotationAngle(rotationHours, jd) {
+  const rotationDays = rotationHours / 24;
+  return ((jd - J2000) / rotationDays) * 2 * Math.PI;
+}
+
+// ---- Orrery (illustrative, spaced-out heliocentric layout) ------------------------
+// Earth and the Moon live in this same heliocentric layout as the other planets --
+// there's no separate scene to switch into, the planets are just always there. True
+// orbital distances are useless for a readable diagram (Neptune is ~77x farther from
+// the Sun than Mercury), so each body's distance is compressed; on top of that, the
+// gap between any two neighboring orbits is floored at ORRERY_MIN_GAP_EARTHS, bigger
+// than the Moon's own loop around Earth -- otherwise a smooth compression curve alone
+// leaves Mercury/Venus/Earth/Mars just a few Earth radii apart, closer together than
+// the Moon's orbit, so the Moon would swing out past Venus or Mars. True angle and
+// true relative speed both still come straight out of keplerianPosition, untouched.
+
+const ORRERY_BASE_RADIUS_EARTHS = 30; // roughly Mercury's assigned orbit
+const ORRERY_SPACING_EARTHS = 16; // how fast the underlying curve spreads orbits apart moving outward
+const ORRERY_MIN_GAP_EARTHS = 9; // no two neighboring orbits ever end up closer than this
+
+// Every orbited body, Sun-distance order (ascending semi-major axis, which never
+// changes, so this ordering is stable).
+const ORRERY_BODIES = [...PLANETS, { name: "Earth", elements: EARTH_ELEMENTS, radiusEarths: 1 }]
+  .slice()
+  .sort((a, b) => a.elements[0] - b.elements[0]);
+
+// Each body's assigned orbit radius (Earth radii), keyed by name: the natural
+// sqrt(semi-major-axis) curve, widened wherever it would otherwise leave two orbits
+// closer than ORRERY_MIN_GAP_EARTHS. Static -- semi-major axis doesn't change with
+// time -- so this runs once at module load, not per frame.
+export const ORRERY_ORBIT_RADII = (() => {
+  const radii = {};
+  let previous = null;
+  for (const body of ORRERY_BODIES) {
+    const raw = ORRERY_BASE_RADIUS_EARTHS + ORRERY_SPACING_EARTHS * Math.sqrt(body.elements[0]);
+    radii[body.name] = previous === null ? raw : Math.max(raw, previous + ORRERY_MIN_GAP_EARTHS);
+    previous = radii[body.name];
+  }
+  return radii;
+})();
+
+const ORRERY_PLANET_SIZE_BASE_EARTHS = 0.6;
+const ORRERY_PLANET_SIZE_SPACING_EARTHS = 0.4;
+
+// Maps a body's true radius (Earth radii) to an illustrative display radius: the same
+// square-root compression idea as the orbit spacing above, calibrated so Earth (1)
+// maps to exactly 1 -- its own real size, since Earth keeps its normal, already-built
+// detailed globe. Jupiter's true ~11x-Earth size compresses to under 2x, so Mercury
+// isn't a sub-pixel dot next to it, while every relative comparison that matters --
+// Jupiter a bit bigger than Saturn, Earth and Venus about the same, everything
+// smaller than the Sun -- still holds.
+export function orreryDisplayPlanetRadius(radiusEarths) {
+  return (
+    ORRERY_PLANET_SIZE_BASE_EARTHS + ORRERY_PLANET_SIZE_SPACING_EARTHS * Math.sqrt(radiusEarths)
+  );
+}
+
+// A body's position in the illustrative scene (scene axes, Earth radii): true orbital
+// angle and true relative speed, with its whole true orbit uniformly scaled so its
+// radius lands on `assignedRadius` (ORRERY_ORBIT_RADII[name]). A uniform scale keeps
+// the orbit's true shape (its eccentricity), just resized. `elements` is a planet's
+// own elements, or EARTH_ELEMENTS for Earth itself.
+export function orreryScenePosition(elements, assignedRadius, jd) {
+  const centuriesSinceJ2000 = (jd - J2000) / 36525;
+  const [xAu, yAu, zAu] = keplerianPosition(elements, centuriesSinceJ2000, 0, true);
+  const scale = assignedRadius / elements[0];
+  return [xAu * scale, zAu * scale, -yAu * scale];
+}
+
+// Samples a body's true orbital ellipse (its shape barely changes on human timescales,
+// so the J2000 epoch is close enough -- no need for a specific jd) into `segments`
+// scene-axes points, scaled the same way as orreryScenePosition so a drawn orbit line
+// and the body on it always line up.
+export function orreryOrbitPoints(elements, assignedRadius, segments) {
+  const scale = assignedRadius / elements[0];
+  const points = [];
+  for (let i = 0; i <= segments; i++) {
+    const eccentricAnomaly = (i / segments) * 2 * Math.PI;
+    const [xAu, yAu, zAu] = keplerianPosition(elements, 0, eccentricAnomaly, false);
+    points.push([xAu * scale, zAu * scale, -yAu * scale]);
+  }
+  return points;
 }

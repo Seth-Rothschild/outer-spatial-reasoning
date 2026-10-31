@@ -12,6 +12,11 @@ import {
   earthFixedToScene,
   keplerianPosition,
   planetScenePosition,
+  planetRotationAngle,
+  orreryDisplayPlanetRadius,
+  orreryScenePosition,
+  orreryOrbitPoints,
+  ORRERY_ORBIT_RADII,
   PLANETS,
   EARTH_ELEMENTS,
 } from "../src/astronomy.js";
@@ -140,5 +145,120 @@ describe("planetScenePosition", () => {
       false,
     );
     expect(Math.hypot(earthX, earthY, earthZ)).toBeCloseTo(1, 1); // Earth stays near 1 AU
+  });
+});
+
+describe("ORRERY_ORBIT_RADII", () => {
+  const ORDER = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"];
+
+  it("keeps every body in true Sun-distance order", () => {
+    for (let i = 1; i < ORDER.length; i++) {
+      expect(ORRERY_ORBIT_RADII[ORDER[i]]).toBeGreaterThan(ORRERY_ORBIT_RADII[ORDER[i - 1]]);
+    }
+  });
+
+  it("never leaves two neighboring orbits closer together than the Moon's own orbit", () => {
+    const MOON_DISTANCE_ILLUSTRATIVE = 4; // keep in sync with scene.js
+    for (let i = 1; i < ORDER.length; i++) {
+      const gap = ORRERY_ORBIT_RADII[ORDER[i]] - ORRERY_ORBIT_RADII[ORDER[i - 1]];
+      expect(gap).toBeGreaterThan(MOON_DISTANCE_ILLUSTRATIVE * 2);
+    }
+  });
+});
+
+describe("orreryDisplayPlanetRadius", () => {
+  const radiusOf = (name) => PLANETS.find((p) => p.name === name).radiusEarths;
+
+  it("keeps Jupiter a bit bigger than Saturn", () => {
+    expect(orreryDisplayPlanetRadius(radiusOf("Jupiter"))).toBeGreaterThan(
+      orreryDisplayPlanetRadius(radiusOf("Saturn")),
+    );
+  });
+
+  it("keeps Earth and Venus about the same size", () => {
+    const earthRadius = orreryDisplayPlanetRadius(1);
+    const venusRadius = orreryDisplayPlanetRadius(radiusOf("Venus"));
+    expect(Math.abs(earthRadius - venusRadius) / earthRadius).toBeLessThan(0.1);
+  });
+
+  it("keeps every planet smaller than the illustrative Sun radius (15)", () => {
+    for (const planet of PLANETS) {
+      expect(orreryDisplayPlanetRadius(planet.radiusEarths)).toBeLessThan(15);
+    }
+  });
+
+  it("brings Mercury within a visible range of the other planets, not sub-pixel tiny", () => {
+    const mercuryRadius = orreryDisplayPlanetRadius(radiusOf("Mercury"));
+    const earthRadius = orreryDisplayPlanetRadius(1);
+    expect(mercuryRadius).toBeGreaterThan(earthRadius * 0.5);
+  });
+});
+
+describe("orreryScenePosition", () => {
+  it("returns finite coordinates within eccentricity range of its assigned radius", () => {
+    const jd = julianDateFromUnixMs(Date.now());
+    for (const planet of PLANETS) {
+      const assignedRadius = ORRERY_ORBIT_RADII[planet.name];
+      const [x, y, z] = orreryScenePosition(planet.elements, assignedRadius, jd);
+      expect([x, y, z].every(Number.isFinite)).toBe(true);
+      // A uniformly-scaled ellipse's radius still varies around its assigned value
+      // (that's the point -- eccentricity survives the scaling), so check it's within
+      // a generous relative tolerance rather than exactly equal.
+      const relativeDeviation = Math.abs(Math.hypot(x, y, z) - assignedRadius) / assignedRadius;
+      expect(relativeDeviation).toBeLessThan(0.3);
+    }
+  });
+
+  it("keeps Mars's orbit closer to Earth's than Jupiter's", () => {
+    const jd = julianDateFromUnixMs(Date.now());
+    const earthRadius = Math.hypot(
+      ...orreryScenePosition(EARTH_ELEMENTS, ORRERY_ORBIT_RADII.Earth, jd),
+    );
+    const mars = PLANETS.find((p) => p.name === "Mars");
+    const jupiter = PLANETS.find((p) => p.name === "Jupiter");
+    const marsRadius = Math.hypot(
+      ...orreryScenePosition(mars.elements, ORRERY_ORBIT_RADII.Mars, jd),
+    );
+    const jupiterRadius = Math.hypot(
+      ...orreryScenePosition(jupiter.elements, ORRERY_ORBIT_RADII.Jupiter, jd),
+    );
+    expect(Math.abs(marsRadius - earthRadius)).toBeLessThan(Math.abs(jupiterRadius - earthRadius));
+  });
+});
+
+describe("orreryOrbitPoints", () => {
+  it("samples a closed loop of finite points lying near the assigned orbit radius", () => {
+    const assignedRadius = ORRERY_ORBIT_RADII.Earth; // Earth's orbit is nearly circular (e ~ 0.0167)
+    const earth = orreryOrbitPoints(EARTH_ELEMENTS, assignedRadius, 16);
+    expect(earth).toHaveLength(17); // segments + 1, first and last point coincide
+    for (const [x, y, z] of earth) {
+      expect([x, y, z].every(Number.isFinite)).toBe(true);
+      const relativeDeviation = Math.abs(Math.hypot(x, y, z) - assignedRadius) / assignedRadius;
+      expect(relativeDeviation).toBeLessThan(0.05);
+    }
+    const [firstX, firstY, firstZ] = earth[0];
+    const [lastX, lastY, lastZ] = earth[earth.length - 1];
+    expect(firstX).toBeCloseTo(lastX, 6);
+    expect(firstY).toBeCloseTo(lastY, 6);
+    expect(firstZ).toBeCloseTo(lastZ, 6);
+  });
+});
+
+describe("planetRotationAngle", () => {
+  it("is zero at J2000.0", () => {
+    expect(planetRotationAngle(24, 2451545.0)).toBeCloseTo(0, 9);
+  });
+
+  it("spins a full turn after one rotation period", () => {
+    const rotationHours = 10;
+    const oneRotationLaterJd = 2451545.0 + rotationHours / 24;
+    expect(planetRotationAngle(rotationHours, oneRotationLaterJd)).toBeCloseTo(2 * Math.PI, 7);
+  });
+
+  it("spins the opposite direction for a retrograde (negative) rotation period", () => {
+    const prograde = planetRotationAngle(24, 2451546.0);
+    const retrograde = planetRotationAngle(-24, 2451546.0);
+    expect(Math.sign(prograde)).toBe(1);
+    expect(Math.sign(retrograde)).toBe(-1);
   });
 });

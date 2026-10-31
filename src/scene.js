@@ -5,8 +5,6 @@
 
 import * as THREE from "three";
 import {
-  AU_IN_EARTH_RADII,
-  sunPosition,
   moonPosition,
   greenwichSiderealTime,
   obliquityOfEcliptic,
@@ -15,8 +13,16 @@ import {
   julianDateFromUnixMs,
   moonSunElongation,
   moonIlluminatedFraction,
+  PLANETS,
+  EARTH_ELEMENTS,
+  orreryScenePosition,
+  orreryOrbitPoints,
+  orreryDisplayPlanetRadius,
+  planetRotationAngle,
+  ORRERY_ORBIT_RADII,
 } from "./astronomy.js";
 import { earthTexture, cloudTexture, moonTexture, sunGlowTexture } from "./textures.js";
+import { PLANET_TEXTURE_URLS, SATURN_RING_TEXTURE_URL } from "./planetTextures.js";
 import {
   bostonTimeToUnixMs,
   unixMsToDatetimeInput,
@@ -30,11 +36,17 @@ const BOSTON_LONGITUDE = -71.0589;
 
 // Illustrative-scale sizes/distances (Earth radii): the Moon and Sun are drawn
 // close and big enough to see and interact with, rather than at their true scale.
+// The Moon's orbit (4) has to stay well inside the smallest gap between neighboring
+// planet orbits (9, enforced in ORRERY_ORBIT_RADII in astronomy.js) or it would swing
+// out past Venus or Mars -- see ORRERY_MIN_GAP_EARTHS there.
 const MOON_RADIUS_EARTHS = 0.2727;
-const MOON_DISTANCE_ILLUSTRATIVE = 7;
+const MOON_DISTANCE_ILLUSTRATIVE = 4;
 const MOON_DISTANCE_TRUE_AVERAGE = 60.27; // scales the illustrative distance realistically
-const SUN_DISTANCE_ILLUSTRATIVE = 60;
-const SUN_RADIUS_ILLUSTRATIVE = 6;
+const SUN_RADIUS_ILLUSTRATIVE = 6; // comfortably bigger than Jupiter's display radius (~1.9, see orreryDisplayPlanetRadius)
+
+const ORRERY_ORBIT_SEGMENTS = 160;
+const ORRERY_CAMERA_DISTANCE = 480; // far enough back to frame Neptune's orbit (~118 Earth radii out)
+const ORRERY_CAMERA_MIN_DISTANCE = 30;
 
 const CAMERA_FOV_DEG = 40;
 const MAX_ZOOM_FACTOR = 3;
@@ -51,7 +63,7 @@ function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene origin
+const SUN_ORIGIN = new THREE.Vector3(0, 0, 0); // the Sun is the one fixed point every orbit is drawn around
 
 // A Viewpoint is a place you examine from: `anchor` is the subject you orbit, and
 // the camera always faces it -- dragging swings your position around the anchor,
@@ -69,8 +81,11 @@ const EARTH_ORIGIN = new THREE.Vector3(0, 0, 0); // Earth is always at the scene
 // Each Viewpoint just needs its own anchor/frameToward/distance/framing, reading
 // whatever fields it needs off `frame`; the camera code itself never special-cases
 // any of them.
+// Earth now orbits the Sun at its real position (see renderFrame's earthDisplayPos),
+// so these anchor on frame.earthDisplayPos rather than a fixed point -- the camera
+// rides along with Earth the same way it already rides along with the Moon below.
 const EARTH_TOWARD_MOON = {
-  anchor: () => EARTH_ORIGIN,
+  anchor: (frame) => frame.earthDisplayPos,
   frameToward: (frame) => frame.moonDisplayPos,
   distance: 5, // close enough that Earth reads as the foreground subject
   minDistance: 1.6, // stay just outside Earth's radius (1) even at max zoom
@@ -78,7 +93,7 @@ const EARTH_TOWARD_MOON = {
   defaultPitch: 0.45,
 };
 const EARTH_TOWARD_SUN = {
-  anchor: () => EARTH_ORIGIN,
+  anchor: (frame) => frame.earthDisplayPos,
   frameToward: (frame) => frame.sunDisplayPos,
   distance: 8, // farther back than the Moon view: Earth's bulk eclipses the Sun at close range
   minDistance: 1.6,
@@ -91,18 +106,36 @@ const EARTH_TOWARD_SUN = {
 // much closer than the view from Earth allows.
 const MOON_NEAR_SIDE = {
   anchor: (frame) => frame.moonDisplayPos,
-  frameToward: () => EARTH_ORIGIN,
+  frameToward: (frame) => frame.earthDisplayPos,
   distance: 1.2, // close enough to read surface texture and the terminator clearly
   minDistance: 0.35, // stay just outside the Moon's radius (0.2727) even at max zoom
   defaultYaw: 0,
   defaultPitch: 0.12,
 };
 
-// Keyed by the view-selector button that activates it; see setActiveViewpoint().
+// An arbitrary point distinct from SUN_ORIGIN -- frameToward just needs to differ
+// from the anchor so the camera has a direction to compute its default yaw from, and
+// this overview has no single subject to actually orient toward (unlike the Moon/Sun
+// views, where the other body IS that subject).
+const SYSTEM_FRAME_TOWARD = new THREE.Vector3(1, 0, 0);
+const SYSTEM_VIEWPOINT = {
+  anchor: () => SUN_ORIGIN,
+  frameToward: () => SYSTEM_FRAME_TOWARD,
+  distance: ORRERY_CAMERA_DISTANCE,
+  minDistance: ORRERY_CAMERA_MIN_DISTANCE,
+  defaultYaw: 0,
+  defaultPitch: 0.95, // high enough to read the orbits as concentric rings, not edge-on
+};
+
+// Keyed by the view-selector button that activates it; see setActiveViewpoint(). All
+// of these look at the same, always-populated scene -- the planets are always there,
+// whichever Viewpoint you're using (this used to be a separate "Orrery" scene that
+// hid the Earth/Moon/Sun view; now it's just another camera angle on the one scene).
 const VIEWPOINTS = {
   moon: EARTH_TOWARD_MOON,
   sun: EARTH_TOWARD_SUN,
   phases: MOON_NEAR_SIDE,
+  orrery: SYSTEM_VIEWPOINT,
 };
 
 export function initScene() {
@@ -143,15 +176,24 @@ export function initScene() {
   scene.add(sunLight, sunLight.target);
   scene.add(new THREE.AmbientLight(0x3a4a6a, 0.05));
 
+  let earth, clouds, moon, sunMesh, sunGlow, boston, stars;
+  const planetBodies = {}; // name -> { mesh, elements, rotationHours }, positioned each frame in renderFrame()
+  const atmosphereUniforms = { sun: { value: new THREE.Vector3(1, 0, 0) } };
+
+  // Earth's own composite (globe + clouds + atmosphere + Boston marker, below) lives
+  // under this group so renderFrame can translate the whole thing to Earth's current
+  // orbital position in one move, the same way earthFrame (also below) rotates it for
+  // spin -- translation here, rotation on the nested group, composing normally.
+  const earthSystem = new THREE.Group();
+  scene.add(earthSystem);
+
   // Earth's spin (from sidereal time) is applied to this group, separately from its
-  // orbital position, so the globe -- and anything attached to it, like the cloud
-  // layer and the Boston marker -- turns with the planet.
+  // orbital position (that's earthSystem, above), so the globe -- and anything
+  // attached to it, like the cloud layer and the Boston marker -- turns with the
+  // planet without disturbing where the planet itself sits.
   const earthFrame = new THREE.Group();
   earthFrame.matrixAutoUpdate = false;
-  scene.add(earthFrame);
-
-  let earth, clouds, moon, sunMesh, sunGlow, boston, stars;
-  const atmosphereUniforms = { sun: { value: new THREE.Vector3(1, 0, 0) } };
+  earthSystem.add(earthFrame);
 
   // Deferred so the "Building Earth…" message gets a chance to paint before the
   // (synchronous, CPU-bound) texture generation blocks the main thread.
@@ -213,7 +255,7 @@ export function initScene() {
         depthWrite: false,
       }),
     );
-    scene.add(atmosphere);
+    earthSystem.add(atmosphere);
 
     boston = new THREE.Mesh(
       new THREE.SphereGeometry(1, 12, 8),
@@ -239,12 +281,16 @@ export function initScene() {
       }),
     );
     moon.receiveShadow = true;
-    scene.add(moon);
+    scene.add(moon); // not a child of earthSystem: its world position (earth + offset) is set explicitly each frame
 
+    // The Sun sits fixed at SUN_ORIGIN for good -- every planet's orbit (including
+    // Earth's) is drawn around it, so unlike everything else here its position and
+    // scale never need to change after this.
     sunMesh = new THREE.Mesh(
       new THREE.SphereGeometry(1, 48, 32),
       new THREE.MeshBasicMaterial({ color: 0xfff2d6 }),
     );
+    sunMesh.scale.setScalar(SUN_RADIUS_ILLUSTRATIVE);
     scene.add(sunMesh);
     sunGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -254,10 +300,110 @@ export function initScene() {
         depthWrite: false,
       }),
     );
+    sunGlow.scale.setScalar(SUN_RADIUS_ILLUSTRATIVE * 3); // stays well inside Mercury's orbit (~40), so it doesn't wash out the inner planets
     scene.add(sunGlow);
 
+    // No dedicated light for the other planets: sunLight (set up above) is
+    // directional, so -- unlike a positioned light -- it already illuminates the
+    // whole scene uniformly regardless of where an object sits, the same
+    // simplification real distant starlight gets treated with (parallel rays). A
+    // second, positioned light here would double up on Earth and the Moon (which
+    // sunLight already lights correctly) and wash them out.
     stars = buildStarfield();
     scene.add(stars);
+
+    buildPlanets();
+  }
+
+  // Every planet besides Earth: real relative size, real orbital angle and speed,
+  // and real rotation, at a spaced-out illustrative distance from the Sun (see
+  // ORRERY_ORBIT_RADII and orreryDisplayPlanetRadius in astronomy.js). Always part of
+  // the scene -- there's no separate mode to switch into to see them.
+  function buildPlanets() {
+    const textureLoader = new THREE.TextureLoader();
+
+    function orbitRing(elements, assignedRadius) {
+      const points = orreryOrbitPoints(elements, assignedRadius, ORRERY_ORBIT_SEGMENTS).map(
+        vecFromArray,
+      );
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: 0x3a4a6a,
+        transparent: true,
+        opacity: 0.6,
+      });
+      return new THREE.LineLoop(geometry, material);
+    }
+
+    function loadPlanetTexture(url) {
+      const texture = textureLoader.load(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = maxAnisotropy;
+      return texture;
+    }
+
+    scene.add(orbitRing(EARTH_ELEMENTS, ORRERY_ORBIT_RADII.Earth));
+
+    for (const planet of PLANETS) {
+      scene.add(orbitRing(planet.elements, ORRERY_ORBIT_RADII[planet.name]));
+
+      // `pivot` carries the planet's orbital position; `sphere`, a child of it,
+      // carries just its axial spin. Keeping those separate matters for Saturn: its
+      // ring is also a child of `pivot`, not of `sphere`, so the ring travels with
+      // the planet without spinning along with it at the planet's own (much faster)
+      // rotation rate.
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+
+      const displayRadius = orreryDisplayPlanetRadius(planet.radiusEarths);
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(displayRadius, 64, 48),
+        new THREE.MeshStandardMaterial({
+          map: loadPlanetTexture(PLANET_TEXTURE_URLS[planet.name]),
+          roughness: 0.9,
+          metalness: 0,
+        }),
+      );
+      pivot.add(sphere);
+      planetBodies[planet.name] = {
+        pivot,
+        sphere,
+        elements: planet.elements,
+        rotationHours: planet.rotationHours,
+      };
+
+      if (planet.name === "Saturn") pivot.add(buildSaturnRing(displayRadius, textureLoader));
+    }
+  }
+
+  // Saturn's rings, as a flat annulus textured with a radial alpha map. RingGeometry's
+  // default UVs run angularly around the ring, which would smear that map instead of
+  // showing its inner-to-outer gradient -- so each vertex's UV.x is remapped here to
+  // its fraction of the way from the inner to the outer edge.
+  function buildSaturnRing(planetRadius, textureLoader) {
+    const innerRadius = planetRadius * 1.3;
+    const outerRadius = planetRadius * 2.3;
+    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 128);
+    const position = geometry.attributes.position;
+    const uv = geometry.attributes.uv;
+    const vertex = new THREE.Vector3();
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i);
+      uv.setXY(i, (vertex.length() - innerRadius) / (outerRadius - innerRadius), 1);
+    }
+
+    const ringTexture = textureLoader.load(SATURN_RING_TEXTURE_URL);
+    ringTexture.colorSpace = THREE.SRGBColorSpace;
+    const ring = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        map: ringTexture,
+        transparent: true,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2 + 0.47; // lie flat, tilted ~27 deg like Saturn's real obliquity
+    return ring;
   }
 
   function buildStarfield() {
@@ -519,14 +665,18 @@ export function initScene() {
     // ---- per-frame astronomy -------------------------------------------------------
     function computeAstronomy() {
       const jd = julianDateFromUnixMs(simulatedMs);
-      const sun = sunPosition(jd);
       const moonEcliptic = moonPosition(jd);
       const siderealDeg = greenwichSiderealTime(jd);
       const obliquityDeg = obliquityOfEcliptic(jd);
 
-      const sunScenePos = vecFromArray(
-        eclipticToScene(sun.longitude, 0, sun.distanceAu * AU_IN_EARTH_RADII),
+      // Earth's own position (true orbital angle and speed, spaced-out distance --
+      // see orreryScenePosition/ORRERY_ORBIT_RADII in astronomy.js). Everything else
+      // Earth-relative (the Moon, the Sun's apparent direction) is built from this.
+      const earthDisplayPos = vecFromArray(
+        orreryScenePosition(EARTH_ELEMENTS, ORRERY_ORBIT_RADII.Earth, jd),
       );
+      // The Moon's offset from Earth (direction + distance), unaffected by where
+      // Earth itself sits in the wider scene.
       const moonScenePos = vecFromArray(
         eclipticToScene(
           moonEcliptic.longitude,
@@ -539,7 +689,7 @@ export function initScene() {
         jd,
         siderealDeg,
         obliquityDeg,
-        sunScenePos,
+        earthDisplayPos,
         moonScenePos,
         moonDistanceEarthRadii: moonEcliptic.distanceEarthRadii,
       };
@@ -575,14 +725,19 @@ export function initScene() {
 
     // Boston's marker shrinks/grows with Earth's apparent size, and its label only
     // shows once Earth is big enough on screen to read detail, and only when it's
-    // facing the camera (not on the far side of the globe).
-    function placeBostonTag() {
-      const earthPixelRadius = (1 / (camera.position.length() * fovTan)) * (viewportHeight / 2);
+    // facing the camera (not on the far side of the globe). Earth no longer sits at
+    // the world origin (it orbits the Sun like everything else), so both the pixel
+    // radius and the "which way is outward from Earth's center" normal need
+    // `earthDisplayPos` rather than assuming the origin.
+    function placeBostonTag(earthDisplayPos) {
+      const earthPixelRadius =
+        (1 / (camera.position.distanceTo(earthDisplayPos) * fovTan)) * (viewportHeight / 2);
       boston.getWorldPosition(tmpVec);
       const bostonWorldPos = tmpVec.clone();
       const facingCamera =
         bostonWorldPos
           .clone()
+          .sub(earthDisplayPos)
           .normalize()
           .dot(camera.position.clone().sub(bostonWorldPos).normalize()) > 0.05;
       boston.scale.setScalar(
@@ -685,7 +840,7 @@ export function initScene() {
     // ---- render loop ------------------------------------------------------------------
     let lastFrameTime = performance.now();
     const moonDisplayPos = new THREE.Vector3();
-    const sunDisplayPos = new THREE.Vector3();
+    const sunDisplayPos = SUN_ORIGIN; // fixed forever; never copied/mutated in place
 
     function renderFrame(now) {
       const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
@@ -700,12 +855,17 @@ export function initScene() {
       }
       computeAstronomy();
 
-      const sunDirection = astro.sunScenePos.clone().normalize();
+      const earthDisplayPos = astro.earthDisplayPos;
+      const sunDirection = sunDisplayPos.clone().sub(earthDisplayPos).normalize();
       const moonDirection = astro.moonScenePos.clone().normalize();
       const moonDisplayDistance =
         (MOON_DISTANCE_ILLUSTRATIVE * astro.moonDistanceEarthRadii) / MOON_DISTANCE_TRUE_AVERAGE;
-      moonDisplayPos.copy(moonDirection).multiplyScalar(moonDisplayDistance);
-      sunDisplayPos.copy(sunDirection).multiplyScalar(SUN_DISTANCE_ILLUSTRATIVE);
+      moonDisplayPos.copy(earthDisplayPos).addScaledVector(moonDirection, moonDisplayDistance);
+
+      // Translates Earth's whole composite (globe, clouds, atmosphere, Boston) to its
+      // current orbital position; earthFrame's own matrix (below) layers rotation on
+      // top of that, same as it always has.
+      earthSystem.position.copy(earthDisplayPos);
 
       // Earth's orientation, from sidereal time: the three axes of its rotated frame.
       const earthAxisX = vecFromArray(
@@ -724,19 +884,21 @@ export function initScene() {
 
       moon.position.copy(moonDisplayPos);
       moon.quaternion.setFromUnitVectors(X_AXIS, moonDirection.clone().negate()); // tidally locked: near side faces Earth
-      sunMesh.position.copy(sunDisplayPos);
-      sunMesh.scale.setScalar(SUN_RADIUS_ILLUSTRATIVE);
-      sunGlow.position.copy(sunDisplayPos);
-      sunGlow.scale.setScalar(SUN_RADIUS_ILLUSTRATIVE * 9);
 
       sunLight.position.copy(moonDisplayPos).addScaledVector(sunDirection, 300);
       sunLight.target.position.copy(moonDisplayPos);
 
-      updateCamera(dt, { moonDisplayPos, sunDisplayPos });
+      for (const name in planetBodies) {
+        const { pivot, sphere, elements, rotationHours } = planetBodies[name];
+        pivot.position.fromArray(orreryScenePosition(elements, ORRERY_ORBIT_RADII[name], astro.jd));
+        sphere.rotation.y = planetRotationAngle(rotationHours, astro.jd);
+      }
+
+      updateCamera(dt, { earthDisplayPos, moonDisplayPos, sunDisplayPos });
 
       renderer.render(scene, camera);
 
-      placeBostonTag();
+      placeBostonTag(earthDisplayPos);
       updateSunPointer(sunDisplayPos);
 
       if (now - lastPeriodicUpdateMs > 400) {
