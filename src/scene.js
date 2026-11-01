@@ -60,6 +60,8 @@ const CAMERA_FOV_DEG = 40;
 const MAX_ZOOM_FACTOR = 3;
 const MIN_ZOOM_FACTOR = 1e-5;
 const TIME_JUMP_DURATION_MS = 650; // how long a day-jump/Now/date-picker tween takes to settle
+const SCRUB_PIXELS_PER_DAY = 24; // drag distance on the scrub wheel that moves simulated time by one day
+const MILLISECONDS_PER_DAY = 86400000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -530,6 +532,11 @@ export function initScene() {
     // speedSecondsPerSecond every frame as usual.
     let timeTween = null; // { fromMs, toMs, startedAtMs }
 
+    // True while the scrub wheel is being dragged, pausing the normal
+    // speedSecondsPerSecond advance below so a drag isn't fighting live playback.
+    let isScrubbing = false;
+    let scrubTrackOffsetPx = 0;
+
     // Reassigned by setActiveViewpoint() when the user picks another view.
     let activeViewpointKey = "moonFromEarth";
     let activeViewpoint = VIEWPOINTS[activeViewpointKey];
@@ -580,6 +587,8 @@ export function initScene() {
     const infoPanel = $("info-panel");
     const whenInput = $("when");
     const headerTime = $("r-time");
+    const scrubWheel = $("time-scrub");
+    const scrubTrack = $("time-scrub-track");
     const phaseLitPath = $("phase-lit");
     const phaseInfo = $("phase-info");
     const phaseNameEl = $("phase-name");
@@ -657,9 +666,46 @@ export function initScene() {
         animateTimeTo(bostonTimeToUnixMs(+year, +month, +day, +hour, +minute));
       }
     });
-    $("d-minus").addEventListener("click", () => animateTimeTo(simulatedMs - 86400000));
-    $("d-plus").addEventListener("click", () => animateTimeTo(simulatedMs + 86400000));
+    $("d-minus").addEventListener("click", () => animateTimeTo(simulatedMs - MILLISECONDS_PER_DAY));
+    $("d-plus").addEventListener("click", () => animateTimeTo(simulatedMs + MILLISECONDS_PER_DAY));
     $("d-now").addEventListener("click", () => animateTimeTo(Date.now()));
+
+    // Moves simulated time by however many pixels the scrub wheel was just dragged,
+    // cancelling any in-progress day-jump tween so the two controls don't fight, and
+    // slides the tick pattern by the same amount so it tracks the drag 1:1.
+    function scrubTimeBy(deltaPixels) {
+      timeTween = null;
+      simulatedMs += (deltaPixels / SCRUB_PIXELS_PER_DAY) * MILLISECONDS_PER_DAY;
+      scrubTrackOffsetPx += deltaPixels;
+      scrubTrack.style.backgroundPositionX = `${scrubTrackOffsetPx}px`;
+    }
+
+    let scrubPointerId = null;
+    let scrubLastClientX = 0;
+    scrubWheel.addEventListener("pointerdown", (e) => {
+      scrubWheel.setPointerCapture(e.pointerId);
+      scrubPointerId = e.pointerId;
+      scrubLastClientX = e.clientX;
+      isScrubbing = true;
+    });
+    scrubWheel.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== scrubPointerId) return;
+      scrubTimeBy(e.clientX - scrubLastClientX);
+      scrubLastClientX = e.clientX;
+    });
+    function endScrub(e) {
+      if (e.pointerId !== scrubPointerId) return;
+      scrubPointerId = null;
+      isScrubbing = false;
+    }
+    scrubWheel.addEventListener("pointerup", endScrub);
+    scrubWheel.addEventListener("pointercancel", endScrub);
+    scrubWheel.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") scrubTimeBy(-SCRUB_PIXELS_PER_DAY);
+      else if (e.key === "ArrowRight") scrubTimeBy(SCRUB_PIXELS_PER_DAY);
+      else return;
+      e.preventDefault();
+    });
 
     function zoomBy(factor) {
       zoomFactor = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor * factor));
@@ -923,7 +969,7 @@ export function initScene() {
         simulatedMs =
           timeTween.fromMs + (timeTween.toMs - timeTween.fromMs) * easeInOutCubic(progress);
         if (progress >= 1) timeTween = null;
-      } else {
+      } else if (!isScrubbing) {
         simulatedMs += speedSecondsPerSecond * 1000 * dt;
       }
       computeAstronomy();

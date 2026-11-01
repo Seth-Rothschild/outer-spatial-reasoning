@@ -43,32 +43,30 @@
   <body>
     <header>
       <h1>Outer Spatial Reasoning</h1>
-      <div class="header-actions">
-        <button
-          type="button"
-          id="now-toggle"
-          class="now"
-          aria-expanded="false"
-          aria-controls="datebar"
-        >
-          <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
-            <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
-            <path id="phase-lit" fill="#ece7d6" />
-            <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
-          </svg>
-          <span id="r-time"></span>
-        </button>
-        <button
-          type="button"
-          id="info-toggle"
-          class="info-toggle"
-          aria-expanded="false"
-          aria-controls="info-panel"
-          aria-label="About, credits, and source"
-        >
-          i
-        </button>
-      </div>
+      <button
+        type="button"
+        id="now-toggle"
+        class="now"
+        aria-expanded="false"
+        aria-controls="datebar"
+      >
+        <svg id="phase-icon" viewBox="0 0 100 100" role="img" aria-label="Current moon phase">
+          <circle cx="50" cy="50" r="46" fill="#151c2c" stroke="#2c3858" stroke-width="3" />
+          <path id="phase-lit" fill="#ece7d6" />
+          <circle cx="50" cy="50" r="46" fill="none" stroke="#2c3858" stroke-width="3" />
+        </svg>
+        <span id="r-time"></span>
+      </button>
+      <button
+        type="button"
+        id="info-toggle"
+        class="info-toggle"
+        aria-expanded="false"
+        aria-controls="info-panel"
+        aria-label="About, credits, and source"
+      >
+        i
+      </button>
     </header>
 
     <div class="info-panel" id="info-panel" hidden>
@@ -113,6 +111,18 @@
           much of that near side the Sun happens to be lighting from this angle as the Moon orbits.
         </p>
       </div>
+    </div>
+
+    <div
+      class="scrubwheel"
+      id="time-scrub"
+      tabindex="0"
+      aria-label="Scrub through time. Drag left or right, or use the left and right arrow keys, to move backward or forward through simulated time."
+    >
+      <span class="scrubwheel-end" aria-hidden="true">Earlier</span>
+      <div class="scrubwheel-track" id="time-scrub-track" aria-hidden="true"></div>
+      <div class="scrubwheel-needle" aria-hidden="true"></div>
+      <span class="scrubwheel-end" aria-hidden="true">Later</span>
     </div>
 
     <div class="controls">

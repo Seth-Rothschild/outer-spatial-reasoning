@@ -44,31 +44,9 @@
   toward applying that same kind of easing to the baseline yaw/pitch so a
   sudden time jump doesn't instantly whip the camera around.
 
-- **Date/time display should be bigger and more central**: currently
-  `#r-time` sits as small text off to the side in the top control strip
-  (index.html), despite being, per the user, one of the most compelling parts
-  of the experience. Wants a real layout/typography pass rather than just a
-  font-size bump -- good to bundle with other HUD layout work rather than
-  doing in isolation.
-
 - **Boston marker is too big**: the dot marking Boston on the globe reads as
   oversized relative to Earth. `boston.scale` is set each frame in
   `placeBostonTag` (scene.js) from a fixed pixel-size target (`4 *
   bostonWorldPos.distanceTo(camera.position) * fovTan / (viewportHeight / 2)`)
   -- worth revisiting that constant, or the underlying sphere geometry's radius
   relative to Earth's.
-
-- **Time control should be a chunky scrub wheel under the canvas, with a bigger
-  centered "now" readout up top**: feature idea, not yet started. Two pieces:
-  (1) replace the small `−1 day` / `+1 day` buttons in `.datebar` (index.html:139-145)
-  with a large, physical-feeling scrub wheel as a main UI component directly below
-  the canvas view (`#stage`, index.html:101-116) -- something you drag or flick to
-  move backwards and forwards through simulated time, rather than tapping day-jump
-  buttons one at a time. (2) move `#r-time` (index.html:59), which currently sits as
-  small text tucked inside the `now-toggle` header button alongside the phase icon,
-  to a larger, centered "what date and time is it now" readout at the top of the
-  screen -- this is the same display flagged in "Date/time display should be
-  bigger and more central" above, so these should land together rather than as
-  separate passes. Worth deciding whether the scrub wheel replaces the datebar's
-  day-jump buttons outright or just supplements them, and whether scrubbing should
-  pause live playback while dragging.
