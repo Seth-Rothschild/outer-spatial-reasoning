@@ -154,12 +154,22 @@ function nearSideTowardSun(anchorFn, frameTowardFn, displayRadius, minDistanceFa
   };
 }
 
-const SUN_NEAR = nearSideTowardSun(
-  () => SUN_ORIGIN,
-  () => SYSTEM_FRAME_TOWARD,
-  SUN_RADIUS_ILLUSTRATIVE,
-  PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR,
-);
+// Unlike the other near-side views, the Sun's default framing pulls back to three
+// quarters of its own max zoom-out distance and tilts up over the ecliptic, so the
+// planets are visible drifting along their orbits in the background instead of
+// being cropped out by a close-up meant for reading surface detail.
+const SUN_DEFAULT_ZOOM_FACTOR = MAX_ZOOM_FACTOR * 0.75;
+const SUN_DEFAULT_PITCH_RADIANS = 0.4;
+const SUN_NEAR = {
+  ...nearSideTowardSun(
+    () => SUN_ORIGIN,
+    () => SYSTEM_FRAME_TOWARD,
+    SUN_RADIUS_ILLUSTRATIVE,
+    PLANET_NEAR_SIDE_MIN_DISTANCE_FACTOR,
+  ),
+  distance: SUN_RADIUS_ILLUSTRATIVE * PLANET_NEAR_SIDE_DISTANCE_FACTOR * SUN_DEFAULT_ZOOM_FACTOR,
+  defaultPitch: SUN_DEFAULT_PITCH_RADIANS,
+};
 const EARTH_NEAR_SIDE = nearSideTowardSun(
   (frame) => frame.earthDisplayPos,
   (frame) => frame.sunDisplayPos,

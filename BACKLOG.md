@@ -26,20 +26,6 @@
   toward applying that same kind of easing to the baseline yaw/pitch so a
   sudden time jump doesn't instantly whip the camera around.
 
-- **Sun's default view is too tight**: `SUN_NEAR` (scene.js:158-163) is built
-  with the same shared `nearSideTowardSun` helper every planet's near-side
-  view uses, so its framing distance is `SUN_RADIUS_ILLUSTRATIVE *
-PLANET_NEAR_SIDE_DISTANCE_FACTOR` -- the same 4x-display-radius factor as
-  Mercury, Earth, Jupiter, etc. But `SUN_RADIUS_ILLUSTRATIVE` (scene.js:66) is
-  already inflated well past the Sun's true relative size specifically so it
-  reads clearly next to the planets, so multiplying that already-inflated
-  radius by the same factor every planet uses leaves the default Sun view
-  looking noticeably more zoomed-in than the planets' own near-side views.
-  Leaning toward giving the Sun its own, larger distance factor (or
-  overriding `distance` directly on `SUN_NEAR`) rather than touching
-  `PLANET_NEAR_SIDE_DISTANCE_FACTOR`, since the planets already look right at
-  4x.
-
 - **Re-introduce faster playback speeds**: `#speed` in index.html currently
   offers only "Real time" (1) and "1 hour / sec" (3600). Faster options --
   6 hours/sec, 1 day/sec, 3 days/sec, 10 days/sec -- existed before commit
