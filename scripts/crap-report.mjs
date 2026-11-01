@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { ESLint } from "eslint";
 
 const CRAP_THRESHOLD = 30;
-const SCORED_FILES = ["src/astronomy.js", "src/ui.js"];
+const SCORED_FILES = ["src/astronomy.js", "src/ui.js", "src/camera.js"];
 const COVERAGE_FILE = "coverage/coverage-final.json";
 
 async function complexityByFunction() {

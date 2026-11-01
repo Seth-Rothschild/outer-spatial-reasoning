@@ -319,7 +319,11 @@ describe("orreryDisplayPlanetRadius", () => {
 describe("orreryScenePosition", () => {
   it("matches a known scene position for Jupiter away from the epoch", () => {
     const jupiter = PLANETS.find((p) => p.name === "Jupiter");
-    const [x, y, z] = orreryScenePosition(jupiter.elements, ORRERY_ORBIT_RADII.Jupiter, SECOND_DATE_JD);
+    const [x, y, z] = orreryScenePosition(
+      jupiter.elements,
+      ORRERY_ORBIT_RADII.Jupiter,
+      SECOND_DATE_JD,
+    );
     expect(x).toBeCloseTo(51.03699019363287, 9);
     expect(y).toBeCloseTo(-1.3576275047983997, 9);
     expect(z).toBeCloseTo(-51.8268261669296, 9);

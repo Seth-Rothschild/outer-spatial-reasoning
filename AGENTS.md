@@ -2,18 +2,31 @@
 
 ## Code quality bar
 
-Hold every change to the standard in Robert C. Martin's *Clean Code*, not a
+Hold every change to the standard in Robert C. Martin's _Clean Code_, not a
 lower "good enough" bar.
+
+### Why the mechanical checks
+
+Cyclomatic complexity (capped in `eslint.config.js`), coverage, and mutation
+testing are mechanical, automatable stand-ins for "is this actually readable
+and correct" -- checks that don't rely on a careful read catching the problem.
+They exist specifically because AI-generated code tends to look clean on a
+quick pass while hiding sprawling branches, untested edge cases, or
+assertions that don't actually pin the behavior they claim to check. Each one
+alone is gameable (high coverage with weak assertions, or low complexity from
+cramming everything into one unreadable expression, both defeat the point),
+which is why all three are held together -- they're a net that catches what a
+glance wouldn't, not a substitute for actually reading the code.
 
 ### Comments
 
 Code should be scannable and understandable without comments. If a reader
 needs a comment to understand what a piece of code does, that's a signal to
 rename or restructure the code, not to explain it. Default to no comments.
-The only comments worth keeping explain a non-obvious *why* -- a hidden
+The only comments worth keeping explain a non-obvious _why_ -- a hidden
 constraint, a subtle invariant, a workaround for a specific bug, or behavior
 that would genuinely surprise a reader. Never write a comment that explains
-*what* the code does, or that exists only because a name or data shape wasn't
+_what_ the code does, or that exists only because a name or data shape wasn't
 self-explanatory on its own.
 
 ```js

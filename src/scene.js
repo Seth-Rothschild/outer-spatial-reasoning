@@ -23,6 +23,20 @@ import {
 } from "./astronomy.js";
 import { sunGlowTexture } from "./textures.js";
 import {
+  clamp,
+  easeTowardLog,
+  easeAngleToward,
+  easeInOutCubic,
+  tidalLockOrientation,
+  orbitCameraPosition,
+  pixelRadiusOnScreen,
+  worldRadiusForPixelSize,
+  projectToScreenSpace,
+  isOnScreen,
+  isOnNearSide,
+  sunPointerPlacement,
+} from "./camera.js";
+import {
   EARTH_TEXTURE_URL,
   EARTH_CLOUDS_TEXTURE_URL,
   MOON_TEXTURE_URL,
@@ -59,6 +73,8 @@ const SATURN_RING_OUTER_RADIUS_FACTOR = 2.3;
 const CAMERA_FOV_DEG = 40;
 const MAX_ZOOM_FACTOR = 3;
 const MIN_ZOOM_FACTOR = 1e-5;
+const MAX_PITCH_OFFSET_RADIANS = 1.45; // ~83 degrees, just short of looking straight up/down
+const CAMERA_EASE_RATE = 5; // bigger = settles toward its goal faster
 const TIME_JUMP_DURATION_MS = 650; // how long a day-jump/Now/date-picker tween takes to settle
 const SCRUB_PIXELS_PER_DAY = 24; // drag distance on the scrub wheel that moves simulated time by one day
 const MILLISECONDS_PER_DAY = 86400000;
@@ -67,10 +83,6 @@ const $ = (id) => document.getElementById(id);
 
 function vecFromArray([x, y, z]) {
   return new THREE.Vector3(x, y, z);
-}
-
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 const SUN_ORIGIN = new THREE.Vector3(0, 0, 0); // the Sun is the one fixed point every orbit is drawn around
@@ -551,6 +563,15 @@ export function initScene() {
     let cameraDistance = activeViewpoint.distance;
     const anchorPosition = new THREE.Vector3(); // smoothed toward the Viewpoint's anchor each frame
 
+    // The eased baseline yaw contributed by the active Viewpoint's frameToward
+    // direction (see updateCamera) -- smoothed the same way cameraDistance is, so a
+    // fast time-jump doesn't swing the camera as fast as the frameToward body
+    // orbits. `cameraBaselineYawNeedsSnap` makes switching views itself still
+    // instant (no eased sweep-in) by snapping to the new view's raw baseline on its
+    // first frame instead of easing from the old view's leftover value.
+    let cameraBaselineYaw = 0;
+    let cameraBaselineYawNeedsSnap = true;
+
     // True once the user has panned or zoomed away from the active Viewpoint's
     // default framing -- shown in the view selector as "Custom" without actually
     // switching the anchor/frameToward the camera is built around.
@@ -558,7 +579,6 @@ export function initScene() {
 
     let viewportWidth = 1,
       viewportHeight = 1;
-    const X_AXIS = new THREE.Vector3(1, 0, 0);
 
     // ---- labels: Boston's marker, and an arrow pointing to the Sun when it's off-screen ----
     function createTag(label, cssClass) {
@@ -621,6 +641,7 @@ export function initScene() {
       cameraPitchOffset = 0;
       zoomFactor = 1;
       cameraDistance = activeViewpoint.distance;
+      cameraBaselineYawNeedsSnap = true;
       isCustomFraming = false;
       // Toggled here rather than waiting for the periodic update tick, so switching
       // away from the Moon (phase) view hides the panel immediately instead of up to
@@ -708,7 +729,7 @@ export function initScene() {
     });
 
     function zoomBy(factor) {
-      zoomFactor = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor * factor));
+      zoomFactor = clamp(zoomFactor * factor, MIN_ZOOM_FACTOR, MAX_ZOOM_FACTOR);
       markCustomFraming();
     }
 
@@ -730,7 +751,11 @@ export function initScene() {
       if (activePointers.size === 1) {
         if (dx || dy) markCustomFraming();
         cameraYawOffset -= dx * 0.006;
-        cameraPitchOffset = Math.max(-1.45, Math.min(1.45, cameraPitchOffset + dy * 0.006));
+        cameraPitchOffset = clamp(
+          cameraPitchOffset + dy * 0.006,
+          -MAX_PITCH_OFFSET_RADIANS,
+          MAX_PITCH_OFFSET_RADIANS,
+        );
       } else if (activePointers.size === 2) {
         const [a, b] = Array.from(activePointers.values());
         const distance = Math.hypot(a.x - b.x, a.y - b.y);
@@ -758,8 +783,18 @@ export function initScene() {
       if (ARROW_KEYS.has(e.key)) markCustomFraming();
       if (e.key === "ArrowLeft") cameraYawOffset += 0.08;
       else if (e.key === "ArrowRight") cameraYawOffset -= 0.08;
-      else if (e.key === "ArrowUp") cameraPitchOffset = Math.min(1.45, cameraPitchOffset + 0.08);
-      else if (e.key === "ArrowDown") cameraPitchOffset = Math.max(-1.45, cameraPitchOffset - 0.08);
+      else if (e.key === "ArrowUp")
+        cameraPitchOffset = clamp(
+          cameraPitchOffset + 0.08,
+          -MAX_PITCH_OFFSET_RADIANS,
+          MAX_PITCH_OFFSET_RADIANS,
+        );
+      else if (e.key === "ArrowDown")
+        cameraPitchOffset = clamp(
+          cameraPitchOffset - 0.08,
+          -MAX_PITCH_OFFSET_RADIANS,
+          MAX_PITCH_OFFSET_RADIANS,
+        );
       else if (e.key === "+" || e.key === "=") zoomBy(0.88);
       else if (e.key === "-") zoomBy(1.14);
       else handled = false;
@@ -814,28 +849,25 @@ export function initScene() {
     }
 
     // ---- label placement ------------------------------------------------------------
-    const tmpVec = new THREE.Vector3();
-    const tmpCameraSpace = new THREE.Vector3();
 
     // Positions a DOM label over a 3D point, hiding it unless `visible` and the point
     // is on-screen and in front of the camera. `minPixelRadius`, if given, also
     // requires the body to be at least that many pixels across (used for Boston's dot,
     // which should disappear once Earth itself is too small to show detail on).
     function placeTag(el, worldPos, bodyRadius, visible, minPixelRadius) {
-      tmpCameraSpace.copy(worldPos).applyMatrix4(camera.matrixWorldInverse);
       const distance = worldPos.distanceTo(camera.position);
-      const pixelRadius = (bodyRadius / (distance * fovTan)) * (viewportHeight / 2);
-      tmpVec.copy(worldPos).project(camera);
+      const pixelRadius = pixelRadiusOnScreen(bodyRadius, distance, fovTan, viewportHeight);
+      const { ndcX, ndcY, cameraSpaceZ } = projectToScreenSpace(camera, worldPos);
 
-      const onScreen = Math.abs(tmpVec.x) < 1.02 && Math.abs(tmpVec.y) < 1.02;
-      const inFront = tmpCameraSpace.z < 0;
+      const onScreen = isOnScreen(ndcX, ndcY, 1.02);
+      const inFront = cameraSpaceZ < 0;
       const bigEnough = minPixelRadius ? pixelRadius > minPixelRadius : pixelRadius < 7;
       const show = visible && inFront && onScreen && bigEnough;
 
       el.hidden = !show;
       if (show) {
-        const screenX = (tmpVec.x * 0.5 + 0.5) * viewportWidth;
-        const screenY = (-tmpVec.y * 0.5 + 0.5) * viewportHeight;
+        const screenX = (ndcX * 0.5 + 0.5) * viewportWidth;
+        const screenY = (-ndcY * 0.5 + 0.5) * viewportHeight;
         el.style.transform = `translate(${screenX.toFixed(1)}px,${screenY.toFixed(1)}px)`;
       }
       return pixelRadius;
@@ -847,64 +879,52 @@ export function initScene() {
     // the world origin (it orbits the Sun like everything else), so both the pixel
     // radius and the "which way is outward from Earth's center" normal need
     // `earthDisplayPos` rather than assuming the origin.
+    const BOSTON_MARKER_TARGET_PIXELS = 4;
     function placeBostonTag(earthDisplayPos) {
-      const earthPixelRadius =
-        (1 / (camera.position.distanceTo(earthDisplayPos) * fovTan)) * (viewportHeight / 2);
-      boston.getWorldPosition(tmpVec);
-      const bostonWorldPos = tmpVec.clone();
-      const facingCamera =
-        bostonWorldPos
-          .clone()
-          .sub(earthDisplayPos)
-          .normalize()
-          .dot(camera.position.clone().sub(bostonWorldPos).normalize()) > 0.05;
+      const earthPixelRadius = pixelRadiusOnScreen(
+        1,
+        camera.position.distanceTo(earthDisplayPos),
+        fovTan,
+        viewportHeight,
+      );
+      const bostonWorldPos = boston.getWorldPosition(new THREE.Vector3());
+      const facingCamera = isOnNearSide(bostonWorldPos, earthDisplayPos, camera.position);
       boston.scale.setScalar(
         Math.max(
           0.004,
-          (4 * bostonWorldPos.distanceTo(camera.position) * fovTan) / (viewportHeight / 2),
+          worldRadiusForPixelSize(
+            BOSTON_MARKER_TARGET_PIXELS,
+            bostonWorldPos.distanceTo(camera.position),
+            fovTan,
+            viewportHeight,
+          ),
         ),
       );
       placeTag(tagBoston, bostonWorldPos, 1, facingCamera && earthPixelRadius > 24, 0.0001);
       if (earthPixelRadius <= 24) tagBoston.hidden = true;
     }
 
-    // True once the Sun is already visible somewhere on screen.
-    function sunNeedsNoPointer(sunCameraSpacePos, sunProjectedPos) {
-      return (
-        sunCameraSpacePos.z < 0 &&
-        Math.abs(sunProjectedPos.x) < 0.9 &&
-        Math.abs(sunProjectedPos.y) < 0.9
-      );
-    }
-
-    function absOrEpsilon(value) {
-      return Math.abs(value) || 1e-6;
-    }
-
     // Points to the Sun when it's off-screen, so you don't lose track of where the
     // light is coming from while exploring the rest of the scene.
     function updateSunPointer(sunDisplayPos) {
-      tmpCameraSpace.copy(sunDisplayPos).applyMatrix4(camera.matrixWorldInverse);
-      tmpVec.copy(sunDisplayPos).project(camera);
-
-      if (sunNeedsNoPointer(tmpCameraSpace, tmpVec)) {
-        tagSunPointer.hidden = true;
-        return;
-      }
-
-      const dirX = tmpCameraSpace.x,
-        dirY = tmpCameraSpace.y;
-      const dirLength = Math.hypot(dirX, dirY) || 1;
-      const unitX = dirX / dirLength,
-        unitY = dirY / dirLength;
-      const reach = Math.min(
-        (viewportWidth / 2 - 46) / absOrEpsilon(unitX),
-        (viewportHeight / 2 - 30) / absOrEpsilon(unitY),
+      const { ndcX, ndcY, cameraSpaceX, cameraSpaceY, cameraSpaceZ } = projectToScreenSpace(
+        camera,
+        sunDisplayPos,
       );
+      const placement = sunPointerPlacement({
+        cameraSpaceX,
+        cameraSpaceY,
+        cameraSpaceZ,
+        ndcX,
+        ndcY,
+        viewportWidth,
+        viewportHeight,
+      });
 
-      tagSunPointer.hidden = false;
-      tagSunPointer.style.transform = `translate(${(viewportWidth / 2 + unitX * reach).toFixed(1)}px,${(viewportHeight / 2 - unitY * reach).toFixed(1)}px)`;
-      sunPointerArrow.style.transform = `rotate(${((Math.atan2(-unitY, unitX) * 180) / Math.PI).toFixed(1)}deg)`;
+      tagSunPointer.hidden = !placement.show;
+      if (!placement.show) return;
+      tagSunPointer.style.transform = `translate(${placement.screenX.toFixed(1)}px,${placement.screenY.toFixed(1)}px)`;
+      sunPointerArrow.style.transform = `rotate(${placement.rotationDeg.toFixed(1)}deg)`;
     }
 
     // Orbits the active Viewpoint's anchor, always facing it -- for "Earth, toward
@@ -923,31 +943,36 @@ export function initScene() {
     // planets' near-side viewpoints).
     function updateCamera(dt, frame) {
       const anchor = activeViewpoint.anchor(frame);
-      const lookAtPosition = anchor;
       const frameTowardPosition = activeViewpoint.frameToward(frame);
       const directionToFrameTarget = frameTowardPosition.clone().sub(anchor).normalize();
+      const rawBaselineYaw = Math.atan2(directionToFrameTarget.x, directionToFrameTarget.z);
 
       const goalDistance = Math.max(
         activeViewpoint.minDistance,
         activeViewpoint.distance * zoomFactor,
       );
-      const cameraStep = 1 - Math.exp(-dt * 5);
-      cameraDistance = Math.exp(
-        Math.log(cameraDistance) + (Math.log(goalDistance) - Math.log(cameraDistance)) * cameraStep,
-      );
-      anchorPosition.lerp(anchor, cameraStep);
+      cameraDistance = easeTowardLog(cameraDistance, goalDistance, dt, CAMERA_EASE_RATE);
+      // Eased the same way cameraDistance is, so the camera doesn't swing left/right
+      // as fast as the frameToward body orbits when time is advancing quickly (e.g.
+      // the day-jump buttons) -- but snapped instantly on the first frame after
+      // switching views, so picking a different preset still feels immediate.
+      if (cameraBaselineYawNeedsSnap) {
+        cameraBaselineYaw = rawBaselineYaw;
+        cameraBaselineYawNeedsSnap = false;
+      } else {
+        cameraBaselineYaw = easeAngleToward(
+          cameraBaselineYaw,
+          rawBaselineYaw,
+          dt,
+          CAMERA_EASE_RATE,
+        );
+      }
+      anchorPosition.lerp(anchor, 1 - Math.exp(-dt * CAMERA_EASE_RATE));
 
-      const yaw =
-        Math.atan2(directionToFrameTarget.x, directionToFrameTarget.z) +
-        activeViewpoint.defaultYaw +
-        cameraYawOffset;
+      const yaw = cameraBaselineYaw + activeViewpoint.defaultYaw + cameraYawOffset;
       const pitch = activeViewpoint.defaultPitch + cameraPitchOffset;
-      camera.position.set(
-        anchorPosition.x + cameraDistance * Math.cos(pitch) * Math.sin(yaw),
-        anchorPosition.y + cameraDistance * Math.sin(pitch),
-        anchorPosition.z + cameraDistance * Math.cos(pitch) * Math.cos(yaw),
-      );
-      camera.lookAt(lookAtPosition);
+      camera.position.copy(orbitCameraPosition({ anchorPosition, cameraDistance, yaw, pitch }));
+      camera.lookAt(anchor);
       camera.near = Math.max(0.01, cameraDistance * 0.002);
       camera.far = Math.max(cameraDistance * 220, 2500);
       camera.updateProjectionMatrix();
@@ -1002,7 +1027,7 @@ export function initScene() {
       atmosphereUniforms.sun.value.copy(sunDirection);
 
       moon.position.copy(moonDisplayPos);
-      moon.quaternion.setFromUnitVectors(X_AXIS, moonDirection.clone().negate()); // tidally locked: near side faces Earth
+      moon.quaternion.copy(tidalLockOrientation(moonDirection.clone().negate())); // near side faces Earth
 
       for (const name in planetBodies) {
         const { pivot, sphere, elements, rotationHours } = planetBodies[name];

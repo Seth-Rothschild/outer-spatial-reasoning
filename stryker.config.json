@@ -2,7 +2,7 @@
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
   "packageManager": "npm",
   "testRunner": "vitest",
-  "mutate": ["src/astronomy.js", "src/ui.js"],
+  "mutate": ["src/astronomy.js", "src/ui.js", "src/camera.js"],
   "reporters": ["clear-text", "progress", "json"],
   "coverageAnalysis": "perTest",
   "thresholds": { "high": 95, "low": 90, "break": 90 }
