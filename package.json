@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "crap": "node scripts/crap-report.mjs",
+    "test:mutation": "stryker run",
     "visual-check": "node scripts/visual-check.mjs"
   },
   "dependencies": {
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",

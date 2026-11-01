@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bostonTimeToUnixMs,
   unixMsToDatetimeInput,
+  formatFullDate,
   litDiscPath,
   moonPhaseName,
 } from "../src/ui.js";
@@ -22,14 +23,16 @@ describe("Boston local time conversions", () => {
 
   it("resolves the spring-forward gap (clocks skip 2:00-3:00 AM)", () => {
     // 2024-03-10 02:30 never happened in Boston; this exercises the correction
-    // branch that re-checks the offset after the first guess.
-    const unixMs = bostonTimeToUnixMs(2024, 3, 10, 2, 30);
-    expect(Number.isFinite(unixMs)).toBe(true);
+    // branch that re-checks the offset after the first guess. It resolves to
+    // 06:30 UTC -- a 4-hour (EDT) offset, the one that guessing 02:30 as EST and
+    // re-checking actually lands on.
+    expect(bostonTimeToUnixMs(2024, 3, 10, 2, 30)).toBe(Date.UTC(2024, 2, 10, 6, 30));
   });
 
   it("resolves the fall-back ambiguous hour (clocks repeat 1:00-2:00 AM)", () => {
-    const unixMs = bostonTimeToUnixMs(2024, 11, 3, 1, 30);
-    expect(Number.isFinite(unixMs)).toBe(true);
+    // 01:30 happens twice on 2024-11-03; this resolves to its first (EDT) occurrence,
+    // 05:30 UTC, rather than the second (EST) one an hour later.
+    expect(bostonTimeToUnixMs(2024, 11, 3, 1, 30)).toBe(Date.UTC(2024, 10, 3, 5, 30));
   });
 });
 
@@ -43,17 +46,40 @@ describe("litDiscPath", () => {
     // cos(0deg) and cos(180deg) are both +/-1, so the terminator ellipse widens to
     // the full radius at both new and full moon (the Moon looks like a full disc --
     // all dark or all lit -- not like a sliver).
-    const newMoon = litDiscPath(0, 0, 10, 0);
-    const fullMoon = litDiscPath(0, 0, 10, 180);
-    expect(newMoon).toContain("A10.00 10");
-    expect(fullMoon).toContain("A10.00 10");
+    expect(litDiscPath(0, 0, 10, 0)).toBe("M0 -10A10 10 0 0 1 0 10A10.00 10 0 0 0 0 -10Z");
+    expect(litDiscPath(0, 0, 10, 180)).toBe("M0 -10A10 10 0 0 0 0 10A10.00 10 0 0 0 0 -10Z");
+  });
+
+  it("matches a known terminator radius at a non-axis-aligned elongation", () => {
+    // 60 degrees isn't one of the special angles (0/90/180/270) covered elsewhere,
+    // so this pins the terminator-radius formula's coefficient and its conversion to
+    // radians, not just its behavior at degenerate inputs.
+    expect(litDiscPath(0, 0, 10, 60)).toBe("M0 -10A10 10 0 0 1 0 10A5.00 10 0 0 0 0 -10Z");
   });
 
   it("flips the terminator sweep for a waning crescent", () => {
     // Waning (elongation > 180) and a crescent (elongation > 270): the one combination
     // not already hit by the new/first-quarter/full/last-quarter cases above.
-    const path = litDiscPath(0, 0, 10, 320);
-    expect(path).toMatch(/^M0 -10A10 10 0 0 0 0 10A[\d.]+ 10 0 0 1 0 -10Z$/);
+    expect(litDiscPath(0, 0, 10, 320)).toBe("M0 -10A10 10 0 0 0 0 10A7.66 10 0 0 1 0 -10Z");
+  });
+
+  it("flips isCrescent exactly at the 90-degree boundary, not before or after", () => {
+    expect(litDiscPath(0, 0, 10, 89)).toBe("M0 -10A10 10 0 0 1 0 10A0.17 10 0 0 0 0 -10Z");
+    expect(litDiscPath(0, 0, 10, 90)).toBe("M0 -10A10 10 0 0 1 0 10A0.00 10 0 0 1 0 -10Z");
+    expect(litDiscPath(0, 0, 10, 91)).toBe("M0 -10A10 10 0 0 1 0 10A0.17 10 0 0 1 0 -10Z");
+  });
+
+  it("flips isCrescent exactly at the 270-degree boundary, not before or after", () => {
+    expect(litDiscPath(0, 0, 10, 269)).toBe("M0 -10A10 10 0 0 0 0 10A0.17 10 0 0 0 0 -10Z");
+    expect(litDiscPath(0, 0, 10, 270)).toBe("M0 -10A10 10 0 0 0 0 10A0.00 10 0 0 0 0 -10Z");
+    expect(litDiscPath(0, 0, 10, 271)).toBe("M0 -10A10 10 0 0 0 0 10A0.17 10 0 0 1 0 -10Z");
+  });
+});
+
+describe("formatFullDate", () => {
+  it("formats a known Boston time with weekday, date, time, and zone", () => {
+    const unixMs = bostonTimeToUnixMs(2024, 3, 15, 9, 45);
+    expect(formatFullDate.format(unixMs)).toBe("Fri, Mar 15, 2024, 9:45:00 AM EDT");
   });
 });
 

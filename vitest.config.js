@@ -8,20 +8,18 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, "archive/**"],
     coverage: {
       provider: "v8",
-      include: ["src/astronomy.js", "src/ui.js", "src/textures.js"],
-      // scene.js is excluded: it's WebGL/DOM wiring (Three.js scene graph, pointer
-      // and keyboard handlers, canvas rendering) that unit tests can't exercise
-      // meaningfully without mocking away everything it actually does.
+      include: ["src/astronomy.js", "src/ui.js"],
+      // scene.js and textures.js are excluded: scene.js is WebGL/DOM wiring (Three.js
+      // scene graph, pointer and keyboard handlers, canvas rendering) and textures.js
+      // is now entirely canvas-drawing (document.createElement("canvas"), 2D context
+      // calls) since the real photo textures replaced its procedural noise math --
+      // neither can be exercised meaningfully by a node-environment unit test without
+      // mocking away everything it actually does. Both are covered by the Playwright
+      // visual-check scripts instead (see scripts/visual-checks/).
       reporter: ["text", "json-summary"],
       thresholds: {
         "src/astronomy.js": { statements: 95, branches: 95, functions: 95, lines: 95 },
         "src/ui.js": { statements: 95, branches: 95, functions: 95, lines: 95 },
-        // textures.js mixes pure, fully-tested noise math with canvas-drawing
-        // functions (document.createElement("canvas"), 2D context calls) that need
-        // a real browser and aren't worth faking with a heavy canvas polyfill just
-        // for coverage numbers. The floor below is the pure-math share of the file;
-        // raise it only by testing more pure logic, not by lowering the bar.
-        "src/textures.js": { statements: 30, branches: 40, functions: 45, lines: 30 },
       },
     },
   },
