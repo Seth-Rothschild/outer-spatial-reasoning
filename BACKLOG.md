@@ -26,18 +26,6 @@
   toward applying that same kind of easing to the baseline yaw/pitch so a
   sudden time jump doesn't instantly whip the camera around.
 
-- **Re-introduce faster playback speeds**: `#speed` in index.html currently
-  offers only "Real time" (1) and "1 hour / sec" (3600). Faster options --
-  6 hours/sec, 1 day/sec, 3 days/sec, 10 days/sec -- existed before commit
-  5afe3b9 ("feat: default playback to real time") and were deliberately
-  trimmed down to two options when real-time playback became the default on
-  load, not lost by accident. `simulatedMs` just advances by
-  `speedSecondsPerSecond * 1000 * dt` each frame (scene.js:1001) however big
-  that number is, so re-adding options is mostly restoring the `<option>`
-  list; worth doing after the Moon-from-Earth viewport-panning item above,
-  since that panning gets more visible the faster the Moon sweeps through
-  its orbit.
-
 - **View-selector order breaks down once a body has more than one
   viewpoint**: the view buttons (index.html:130-141, `VIEWPOINTS` at
   scene.js:196-208) are ordered Sun-outward -- Sun, Mercury, Venus, Earth,
