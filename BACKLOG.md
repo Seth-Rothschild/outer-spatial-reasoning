@@ -10,24 +10,6 @@
   cover Mercury's worst case) -- cheaper in screen space and consistent with the
   existing "illustrative, not literal" approach to distance and size.
 
-- **Moon flips over during day-shuffling**: root cause identified. In
-  `src/scene.js`'s `renderFrame`, the Moon's orientation is set each frame with
-  `moon.quaternion.setFromUnitVectors(X_AXIS, moonDirection.clone().negate())`
-  (scene.js:959). THREE's `setFromUnitVectors` has a special-case branch for
-  when the two vectors are nearly antiparallel (`vFrom.dot(vTo) + 1 <
-EPSILON`), which picks an arbitrary perpendicular axis instead of the smooth
-  cross-product one used everywhere else. That triggers whenever the Moon's
-  direction from Earth swings close to `+X` in scene axes -- a configuration
-  it passes through roughly once per lunar orbit (~27.3 days) -- producing a
-  visible discontinuous "twist" of the textured sphere right at that crossing,
-  which reads as the Moon flipping. Leaning toward replacing the single
-  `setFromUnitVectors` call with a proper look-basis (forward = Earth
-  direction from Moon, a fixed world "up" for roll, right = their cross
-  product) built into a rotation matrix -- the real Moon's orbit stays close
-  to the ecliptic, so that basis would only hit its own singularity if the
-  Moon's direction ever aligned with the chosen up vector, which doesn't
-  happen.
-
 - **Viewport pans/swings when fast-forwarding days in the Moon-from-Earth
   view**: by design, not an accident, and still present after the view
   selector was reworked to add per-planet viewpoints (the view is now named
@@ -43,13 +25,6 @@ EPSILON`), which picks an arbitrary perpendicular axis instead of the smooth
   `cameraStep`/`Math.exp` lerp just above); the baseline yaw isn't. Leaning
   toward applying that same kind of easing to the baseline yaw/pitch so a
   sudden time jump doesn't instantly whip the camera around.
-
-- **Boston marker is too big**: the dot marking Boston on the globe reads as
-  oversized relative to Earth. `boston.scale` is set each frame in
-  `placeBostonTag` (scene.js) from a fixed pixel-size target (`4 *
-bostonWorldPos.distanceTo(camera.position) * fovTan / (viewportHeight / 2)`)
-  -- worth revisiting that constant, or the underlying sphere geometry's radius
-  relative to Earth's.
 
 - **Sun's default view is too tight**: `SUN_NEAR` (scene.js:158-163) is built
   with the same shared `nearSideTowardSun` helper every planet's near-side

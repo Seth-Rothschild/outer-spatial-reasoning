@@ -873,13 +873,15 @@ export function initScene() {
       return pixelRadius;
     }
 
-    // Boston's marker shrinks/grows with Earth's apparent size, and its label only
-    // shows once Earth is big enough on screen to read detail, and only when it's
-    // facing the camera (not on the far side of the globe). Earth no longer sits at
-    // the world origin (it orbits the Sun like everything else), so both the pixel
-    // radius and the "which way is outward from Earth's center" normal need
-    // `earthDisplayPos` rather than assuming the origin.
-    const BOSTON_MARKER_TARGET_PIXELS = 4;
+    // Boston's marker holds a constant on-screen size regardless of distance, and both
+    // it and its label disappear once Earth is too small on screen to read detail --
+    // otherwise the marker would stay full-size while Earth itself shrank toward a
+    // speck, reading as oversized. The label also requires facing the camera (not on
+    // the far side of the globe). Earth no longer sits at the world origin (it orbits
+    // the Sun like everything else), so both the pixel radius and the "which way is
+    // outward from Earth's center" normal need `earthDisplayPos` rather than assuming
+    // the origin.
+    const BOSTON_MARKER_TARGET_PIXELS = 2;
     function placeBostonTag(earthDisplayPos) {
       const earthPixelRadius = pixelRadiusOnScreen(
         1,
@@ -889,6 +891,7 @@ export function initScene() {
       );
       const bostonWorldPos = boston.getWorldPosition(new THREE.Vector3());
       const facingCamera = isOnNearSide(bostonWorldPos, earthDisplayPos, camera.position);
+      boston.visible = earthPixelRadius > 24;
       boston.scale.setScalar(
         Math.max(
           0.004,
